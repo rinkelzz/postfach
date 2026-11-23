@@ -387,3 +387,41 @@ def test_new_mail_for_notifications(env):
     assert [(i["subject"], i["from_name"], i["account_name"]) for i in r["items"]] == [("Neu!", "Kunde", "Praxis")]
     assert anna.get(f"/api/v1/new?after_id={r['last_id']}").json()["items"] == []
     assert env["ben"].get(f"/api/v1/new?after_id={start['last_id']}").json()["items"] == []
+
+
+def test_bulk_actions(env):
+    anna, server = env["anna"], env["server"]
+    for i in range(4):
+        server.add("INBOX", mail(subject=f"Mail {i}"))
+    server.add("Trash", mail(subject="Schon im Papierkorb"))
+    acc = anna.post("/api/v1/accounts", json=ACC).json()
+    ids = _ids(anna)
+    folders = _folders(anna)
+    # gelesen / ungelesen
+    r = anna.post("/api/v1/messages/bulk", json={"ids": [ids["Mail 0"], ids["Mail 1"]], "action": "seen"}).json()
+    assert r["flagged"] == 2
+    assert sum("\\seen" in m["flags"] for m in server.folders["INBOX"]["msgs"].values()) == 2
+    anna.post("/api/v1/messages/bulk", json={"ids": [ids["Mail 0"]], "action": "unseen"})
+    assert _folders(anna)["inbox"]["unread"] == 3
+    # verschieben
+    r = anna.post("/api/v1/messages/bulk", json={"ids": [ids["Mail 2"], ids["Mail 3"]], "action": "move",
+                                                 "folder_id": folders["Geschäftlich"]["id"]}).json()
+    assert r["moved"] == 2 and len(server.folders["Gesch&AOQ-ftlich"]["msgs"]) == 2
+    # löschen: aus Posteingang in den Papierkorb, aus dem Papierkorb endgültig (in einem Rutsch)
+    trash_id = _ids(anna, folders["trash"]["id"])["Schon im Papierkorb"]
+    r = anna.post("/api/v1/messages/bulk", json={"ids": [ids["Mail 0"], ids["Mail 1"], trash_id], "action": "delete"}).json()
+    assert (r["trash"], r["deleted"]) == (2, 1)
+    assert server.folders["INBOX"]["msgs"] == {} and len(server.folders["Trash"]["msgs"]) == 2
+    # Fehlerfälle
+    assert anna.post("/api/v1/messages/bulk", json={"ids": [999999], "action": "delete"}).status_code == 404
+    assert anna.post("/api/v1/messages/bulk", json={"ids": [1], "action": "explode"}).status_code == 422
+    other = anna.post("/api/v1/accounts", json={**ACC, "email": "zwei@praxis.de"}).json()
+    both = [m["id"] for m in anna.get("/api/v1/messages?q=Mail").json()["items"]]
+    if len({m["account_id"] for m in anna.get("/api/v1/messages?q=Mail").json()["items"]}) > 1:
+        assert anna.post("/api/v1/messages/bulk", json={"ids": both, "action": "move",
+                                                        "folder_id": folders["Geschäftlich"]["id"]}).status_code == 400
+    assert other["id"]
+    # fremde Nachrichten
+    gid = _ids(anna, folders["Geschäftlich"]["id"])["Mail 2"]
+    assert env["ben"].post("/api/v1/messages/bulk", json={"ids": [gid], "action": "delete"}).status_code == 404
+    assert acc["id"]

@@ -184,12 +184,36 @@ def _m4_oauth(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE accounts ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'password'")
 
 
+def _m5_adressbuch(conn: sqlite3.Connection) -> None:
+    """Version 0.5: Adressbuch je Benutzer (von Hand gepflegt und automatisch aus Mails gesammelt)."""
+    _run(conn, """
+CREATE TABLE IF NOT EXISTS contacts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email           TEXT NOT NULL,                 -- klein geschrieben
+    name            TEXT NOT NULL DEFAULT '',
+    company         TEXT NOT NULL DEFAULT '',
+    phone           TEXT NOT NULL DEFAULT '',
+    notes           TEXT NOT NULL DEFAULT '',
+    manual          INTEGER NOT NULL DEFAULT 0,    -- 1 = von Hand angelegt oder bearbeitet (Name wird nicht mehr überschrieben)
+    hidden          INTEGER NOT NULL DEFAULT 0,    -- 1 = gelöscht: nicht wieder automatisch aufnehmen
+    sent_count      INTEGER NOT NULL DEFAULT 0,    -- so oft angeschrieben
+    received_count  INTEGER NOT NULL DEFAULT 0,    -- so oft Mail bekommen
+    last_used       TEXT,
+    created_at      TEXT NOT NULL,
+    UNIQUE (owner_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_owner ON contacts(owner_id, hidden)
+""")
+
+
 # Version → Schritt. Nur anhängen, nie ändern!
 MIGRATIONS: Dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _m1_basis,
     2: _m2_mail,
     3: _m3_regeln,
     4: _m4_oauth,
+    5: _m5_adressbuch,
 }
 SCHEMA_VERSION = max(MIGRATIONS)
 

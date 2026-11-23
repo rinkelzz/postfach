@@ -10,7 +10,7 @@ Ein E-Mail-Programm für IMAP-Konten – als Paket auf der eigenen Synology NAS,
 Mehrere Benutzer, jeder mit seinen eigenen Mailkonten, alle Posteingänge in einer Liste. Wer in DSM angemeldet ist,
 ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen Zwischenspeicher für schnelles Suchen.
 
-> **Stand:** Version 0.4 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
+> **Stand:** Version 0.5 – mit Adressbuch und Mehrfachauswahl – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
 > Löschen/Papierkorb, Verschieben, automatisch gespeicherte Entwürfe, Regeln und **Microsoft 365** (Anmeldung
 > mit Code, OAuth2) – siehe [Fahrplan](#fahrplan).
 
@@ -41,7 +41,10 @@ ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen 
   der Konten (Gesendet, Entwürfe, Papierkorb, eigene Ordner – auch mit Umlauten).
 - **Lesen**: Text- und HTML-Mails, Anhänge herunterladen, eingebettete Bilder, als gelesen/ungelesen und mit Stern
   markieren – die Markierungen landen auch am Mailserver, sind also in Outlook oder am Handy genauso zu sehen.
-- **Aufräumen**: Löschen in den Papierkorb (Taste Entf), dort endgültig; Verschieben in andere Ordner.
+- **Aufräumen**: Löschen in den Papierkorb (Taste Entf), dort endgültig; Verschieben in andere Ordner – auch für
+  **mehrere Mails auf einmal** (Häkchen, Umschalt-Klick für einen Bereich), dazu gelesen/ungelesen.
+- **Adressbuch** je Benutzer: sammelt automatisch, wem man schreibt und wer einem schreibt (ohne noreply & Co.), von Hand
+  ergänzbar (Firma, Telefon, Notiz). Beim Schreiben schlägt Postfach passende Adressen vor – häufige zuerst.
 - **Entwürfe** werden beim Schreiben alle 30 Sekunden im Entwürfe-Ordner gespeichert – auch in Outlook oder am Handy
   sichtbar – und lassen sich später weiter bearbeiten.
 - **Schreiben**: neue Mail, Antworten, Allen antworten, Weiterleiten (mit den Original-Anhängen, einzeln abwählbar),
@@ -61,6 +64,8 @@ ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen 
 | Lesen (HTML, externe Bilder blockiert) | Antworten | Handy |
 |---|---|---|
 | ![HTML-Mail](docs/screenshots/html-mail.png) | ![Antworten](docs/screenshots/antworten.png) | ![Handy](docs/screenshots/handy.png) |
+
+![Adressbuch](docs/screenshots/adressbuch.png)
 
 ## Benutzer und Rechte
 
@@ -83,7 +88,16 @@ Posteingang und Postausgang, bevor du speicherst.
 
 Besonderheiten einiger Anbieter:
 
-- **Gmail, Yahoo, iCloud:** ein **App-Passwort** anlegen, das normale Passwort funktioniert nicht.
+- **Gmail:** braucht ein **App-Passwort** – Postfach zeigt die Anleitung mit Links an, sobald eine Gmail-Adresse
+  eingetragen ist:
+  1. [Bestätigung in zwei Schritten](https://myaccount.google.com/signinoptions/twosv) einschalten (ohne sie gibt es
+     keine App-Passwörter).
+  2. [App-Passwörter](https://myaccount.google.com/apppasswords) öffnen, Namen „Postfach“ eingeben, „Erstellen“.
+  3. Das 16-stellige Passwort (ohne Leerzeichen) in Postfach als Passwort eintragen – Google zeigt es nur einmal an.
+  4. Nach einer Änderung des Google-Passworts sind App-Passwörter ungültig – dann ein neues anlegen.
+     Bei Google-Workspace-Konten kann der Administrator App-Passwörter sperren.
+     ([Hilfe von Google](https://support.google.com/accounts/answer/185833?hl=de))
+- **Yahoo, iCloud:** ebenfalls ein **App-Passwort** anlegen, das normale Passwort funktioniert nicht.
 - **GMX und WEB.DE:** den Abruf per IMAP einmalig im Webmailer erlauben (Einstellungen → POP3/IMAP Abruf).
 - **Telekom:** ein eigenes E-Mail-Passwort im Kundencenter anlegen.
 - **Microsoft 365:** Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr – dafür gibt es
@@ -154,7 +168,8 @@ Mehr in [SECURITY.md](SECURITY.md).
 | 0.1 | Lesen + Senden: Konten, Abruf, Ordner, gemeinsamer Posteingang, Suche, Anhänge, Antworten/Weiterleiten, Rechte für Admins |
 | 0.2 | Neue Mails sofort (IMAP IDLE), Browser-Benachrichtigung, Löschen/Papierkorb, Verschieben, Entwürfe |
 | 0.3 | Regeln: verschieben, weiterleiten, Papierkorb – für neue Mails, „Jetzt anwenden“ für vorhandene |
-| **0.4** | **Microsoft 365 per OAuth2 (Anmeldung mit Code)** – Gmail bleibt beim App-Passwort |
+| 0.4 | Microsoft 365 per OAuth2 (Anmeldung mit Code) – Gmail bleibt beim App-Passwort |
+| **0.5** | **Mehrfachauswahl (löschen, verschieben, markieren), Adressbuch mit Vorschlägen, Gmail-Anleitung** |
 
 ## Installation auf der Synology
 
@@ -266,4 +281,5 @@ its own DSM window with single sign-on for DSM users. The user interface is Germ
   updates through Package Center, four themes, audit log, configurable port.
 - New mail arrives instantly via IMAP IDLE with browser notifications; delete to trash, move, auto-saved drafts.
 - Server-side rules for new inbox mail (move, forward, trash) with mail-loop protection.
+- Multi-select (delete, move, mark read), per-user address book with autocomplete.
 - Microsoft 365 via OAuth2 device-code sign-in (XOAUTH2 for IMAP and SMTP), using the customer's own Entra app registration.

@@ -292,6 +292,8 @@ def send(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = De
         raise HTTPException(400 if "Adresse" in str(e) or "Empfänger angeben" in str(e) or "MB" in str(e) else 502, str(e))
     except crypto.CryptoError as e:
         raise HTTPException(502, str(e))
+    from .. import contacts
+    contacts.collect(conn, user["id"], contacts.parse(data.to) + contacts.parse(data.cc) + contacts.parse(data.bcc), "sent")
     audit(conn, user["id"], "mail_sent", f"account:{account['id']}",
           f"{account['email']} → {len(rcpts)} Empfänger{', ' + str(len(files)) + ' Anhänge' if files else ''}")
     warning = compose.save_sent(conn, account, msg, sync.open_client)
@@ -396,3 +398,42 @@ def new_mail(after_id: Optional[int] = Query(None, ge=0), user=Depends(current_u
             "ORDER BY m.id DESC LIMIT 20", (user["id"], after_id)).fetchall()
         items = [dict(r) for r in rows]
     return {"last_id": top, "items": items}
+
+
+# --- Mehrere auf einmal ---------------------------------------------------------
+
+class BulkIn(BaseModel):
+    ids: List[int] = Field(..., min_length=1, max_length=1000)
+    action: str = Field(..., pattern="^(delete|move|seen|unseen)$")
+    folder_id: Optional[int] = Field(None, description="Ziel bei move (Ordner desselben Kontos)")
+
+
+@router.post("/messages/bulk")
+def bulk(data: BulkIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Ausgewählte Mails löschen (Papierkorb), verschieben oder als (un)gelesen markieren."""
+    ids = list(dict.fromkeys(data.ids))
+    rows = conn.execute(f"SELECT m.* FROM messages m JOIN accounts a ON a.id = m.account_id "
+                        f"WHERE a.owner_id = ? AND m.id IN ({','.join('?' * len(ids))})", [user["id"]] + ids).fetchall()
+    if len(rows) != len(ids):
+        raise HTTPException(404, "Mindestens eine Nachricht wurde nicht gefunden – bitte die Liste neu laden")
+    by_account: dict = {}
+    for r in rows:
+        by_account.setdefault(r["account_id"], []).append(r)
+    dest = None
+    if data.action == "move":
+        if len(by_account) > 1:
+            raise HTTPException(400, "Verschieben geht nur innerhalb eines Kontos – bitte nur Mails eines Kontos auswählen")
+        dest = conn.execute("SELECT * FROM folders WHERE id = ? AND account_id = ?",
+                            (data.folder_id, next(iter(by_account)))).fetchone()
+        if not dest:
+            raise HTTPException(400, "Zielordner nicht gefunden (nur Ordner desselben Kontos)")
+    total = {"trash": 0, "deleted": 0, "moved": 0, "flagged": 0}
+    for account_id, msgs in by_account.items():
+        account = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        try:
+            r = sync.bulk(conn, account, msgs, data.action, dest)
+        except Exception as e:  # noqa: BLE001
+            _imap_fail(e)
+        for k in total:
+            total[k] += r[k]
+    return {"ok": True, **total}

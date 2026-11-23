@@ -59,6 +59,8 @@ Unterstützt wird jeweils die neueste Version unter [Releases](https://github.co
   öffentlicher Client ohne Geheimnis; Berechtigungen nur `IMAP.AccessAsUser.All`, `SMTP.Send` (delegiert),
   `offline_access`, `openid`, `email`. Widerrufen lässt sich der Zugriff jederzeit in Entra ID bzw. unter
   myaccount.microsoft.com.
+- **Adressbuch:** gehört einem Benutzer; Vorschläge und Liste zeigen nur eigene Kontakte, auch Admins sehen fremde nicht.
+  Kontakte sind Teil der Datensicherung (anders als die Mails selbst).
 - **Regeln** gehören einem Benutzer und gelten nur für seine Konten; niemand sonst (auch kein Admin) sieht sie.
   Weiterleiten nur an gültige fremde Adressen (nicht an die eigene), weitergeleitete Mails tragen `Auto-Submitted:
   auto-forwarded` und eine eigene Kennung; automatische Mails, Rückläufer und schon weitergeleitete Mails werden nie

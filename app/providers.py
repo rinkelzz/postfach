@@ -7,8 +7,16 @@ from typing import Dict, Optional
 
 _P = {
     "gmail": {"label": "Gmail", "imap": ("imap.gmail.com", 993, "ssl"), "smtp": ("smtp.gmail.com", 587, "starttls"),
-              "hint": "Gmail braucht ein App-Passwort (Google-Konto → Sicherheit → Bestätigung in zwei Schritten → "
-                      "App-Passwörter). Das normale Passwort funktioniert nicht."},
+              "hint": "Gmail braucht ein App-Passwort – das normale Passwort funktioniert nicht.",
+              "steps": ["Im Google-Konto die Bestätigung in zwei Schritten einschalten (ohne sie gibt es keine App-Passwörter).",
+                        "App-Passwörter öffnen, als Namen z. B. „Postfach“ eingeben und „Erstellen“ klicken.",
+                        "Das angezeigte 16-stellige Passwort (ohne Leerzeichen) hier als Passwort eintragen – Google zeigt es "
+                        "nur einmal an.",
+                        "Ändert man später das Google-Passwort, werden App-Passwörter ungültig – dann ein neues anlegen."],
+              "links": [["Bestätigung in zwei Schritten", "https://myaccount.google.com/signinoptions/twosv"],
+                        ["App-Passwörter", "https://myaccount.google.com/apppasswords"],
+                        ["Hilfe von Google", "https://support.google.com/accounts/answer/185833?hl=de"]],
+              "note": "Bei Google-Workspace-Konten (Firmen) kann der Administrator App-Passwörter sperren."},
     "gmx": {"label": "GMX", "imap": ("imap.gmx.net", 993, "ssl"), "smtp": ("mail.gmx.net", 587, "starttls"),
             "hint": "Bei GMX muss der Abruf per IMAP einmalig im Webmailer erlaubt werden "
                     "(Einstellungen → POP3/IMAP Abruf)."},
@@ -64,7 +72,8 @@ def suggest(email: str) -> Optional[Dict]:
     if key:
         p = _P[key]
         user = local if key == "icloud" else email
-        return {"known": True, "provider": p["label"], "hint": p["hint"],
+        return {"known": True, "provider": p["label"], "hint": p["hint"], "steps": p.get("steps", []),
+                "links": p.get("links", []), "note": p.get("note", ""),
                 "imap_host": p["imap"][0], "imap_port": p["imap"][1], "imap_security": p["imap"][2], "imap_user": user,
                 "smtp_host": p["smtp"][0], "smtp_port": p["smtp"][1], "smtp_security": p["smtp"][2], "smtp_user": email}
     return {"known": False, "provider": "", "hint": "Eigene Domain: Bitte die Serverdaten beim Anbieter nachsehen "

@@ -30,6 +30,7 @@
     <span><span>Postfach</span><small class="brandCompany"></small></span></h1>
   <nav id="tabs">
     <button data-tab="mail">Post<span class="tabbadge hidden" id="mailBadge"></span></button>
+    <button data-tab="contacts">Adressbuch</button>
     <button data-tab="accounts">Konten</button>
     <button data-tab="admin" class="admin hidden">Verwaltung</button>
   </nav>
@@ -53,8 +54,17 @@
             <button class="mini" id="notifyBtn" title="Benachrichtigung bei neuer Mail">🔕</button>
             <button class="mini" id="syncBtn" title="Alle Konten jetzt abrufen">↻ Abrufen</button></div></div>
         <input type="search" id="q" maxlength="200" placeholder="Suchen in allen Konten …" autocomplete="off">
-        <div class="filters"><button data-filter="all" class="on">Alle</button><button data-filter="unread">Ungelesen</button>
+        <div class="filters" id="filters"><button data-filter="all" class="on">Alle</button><button data-filter="unread">Ungelesen</button>
           <button data-filter="flagged">★ Markiert</button></div>
+        <div class="bulkbar hidden" id="bulkBar">
+          <span class="small"><b id="bulkCount">0</b> ausgewählt</span>
+          <button class="mini" id="bulkAll" title="alle geladenen auswählen">Alle</button>
+          <button class="mini danger" id="bulkDel" title="in den Papierkorb (Entf)">🗑</button>
+          <select id="bulkMove" class="mini" title="verschieben"><option value="">📁 …</option></select>
+          <button class="mini" id="bulkSeen" title="als gelesen markieren">✓</button>
+          <button class="mini" id="bulkUnseen" title="als ungelesen markieren">●</button>
+          <button class="mini" id="bulkNone" title="Auswahl aufheben">✕</button>
+        </div>
       </div>
       <div class="items" id="items"></div>
     </section>
@@ -82,6 +92,23 @@
         <div class="row"><span class="err" id="cErr"></span><button class="primary" id="cSend">Senden</button></div>
       </div>
     </div>
+  </div>
+
+  <!-- ADRESSBUCH -->
+  <div data-page="contacts" class="page hidden">
+    <section class="card">
+      <div class="toolbar"><h2>Adressbuch <span class="muted small" id="ctCount"></span></h2>
+        <div class="row"><input type="search" id="ctQ" placeholder="Suchen: Name, Adresse, Firma, Telefon" maxlength="100" style="width:280px">
+          <select id="ctFilter" style="width:auto"><option value="all">alle</option><option value="manual">von Hand angelegt</option>
+            <option value="auto">automatisch gesammelt</option></select>
+          <button class="primary" id="ctNew">＋ Kontakt</button></div></div>
+      <p class="muted small" style="margin-top:-6px">Wem du schreibst und wer dir schreibt, landet automatisch hier – beim Schreiben
+        schlägt Postfach die Adressen vor (häufige zuerst). Technische Absender wie „noreply“ bleiben draußen. Nur du siehst dein Adressbuch.</p>
+      <section class="ctform hidden" id="ctForm"></section>
+      <div class="scroll"><table id="ctTable"></table></div>
+      <div class="row" style="margin-top:8px"><button id="ctMore" class="hidden">Weitere laden</button></div>
+      <div class="err" id="ctErr"></div>
+    </section>
   </div>
 
   <!-- KONTEN -->
@@ -326,5 +353,6 @@
 <script src="static/accounts.js?v={{v}}"></script>
 <script src="static/mail.js?v={{v}}"></script>
 <script src="static/rules.js?v={{v}}"></script>
+<script src="static/contacts.js?v={{v}}"></script>
 </body>
 </html>

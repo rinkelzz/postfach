@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.0] – 2026-11-23
+
+### Neu
+- **Mehrere Mails auf einmal:** Häkchen vor jeder Mail (Umschalt-Klick wählt einen Bereich, „Alle“ alle geladenen).
+  Ausgewählte Mails löschen (Papierkorb, Taste Entf), verschieben oder als gelesen/ungelesen markieren – je Konto mit
+  einer einzigen Verbindung zum Server.
+- **Adressbuch** (eigener Reiter): Wem man schreibt und wer einem schreibt, wird automatisch gesammelt – aus dem
+  Posteingang, dem „Gesendet“-Ordner und beim Senden. Technische Absender (noreply, mailer-daemon, newsletter …) und die
+  eigenen Adressen bleiben draußen. Kontakte lassen sich von Hand anlegen und bearbeiten (Name, Firma, Telefon, Notiz);
+  von Hand gepflegte Namen werden nicht mehr überschrieben, gelöschte Kontakte kommen nicht automatisch wieder.
+  Jeder Benutzer hat sein eigenes Adressbuch – auch Admins sehen fremde nicht.
+- **Vorschläge beim Tippen** in An, Kopie und Blindkopie – häufig angeschriebene zuerst, mit Pfeiltasten und Enter.
+- **Gmail:** Beim Eintragen einer Gmail-Adresse zeigt Postfach jetzt die Schritte zum App-Passwort mit direkten Links
+  (Bestätigung in zwei Schritten, App-Passwörter, Hilfe von Google).
+
 ## [0.4.0] – 2026-11-23
 
 ### Neu: Microsoft 365
@@ -103,6 +118,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.5.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.0
 [0.4.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.4.0
 [0.3.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.1
 [0.3.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.0

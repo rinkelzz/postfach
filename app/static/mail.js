@@ -1,6 +1,6 @@
 "use strict";
 // ---------- Post: Ordner | Liste | Lesen | Schreiben ----------
-const mail = { accounts: [], unread: 0, folderId: null, filter: "all", q: "", items: [], offset: 0, more: false,
+const mail = { sel: new Set(), lastPick: null, accounts: [], unread: 0, folderId: null, filter: "all", q: "", items: [], offset: 0, more: false,
                current: null, msg: null, timer: null, syncPoll: null, compose: null };
 const ROLE_ICON = { inbox: "📥", sent: "📤", drafts: "📝", trash: "🗑️", junk: "🚫", archive: "🗄️", all: "🗂️", "": "📁" };
 const ROLE_NAME = { inbox: "Posteingang", sent: "Gesendet", drafts: "Entwürfe", trash: "Papierkorb", junk: "Spam", archive: "Archiv",
@@ -64,7 +64,7 @@ function renderTree() {
   $("tree").innerHTML = h;
   $$("#tree [data-folder]").forEach(el => el.onclick = () => {
     mail.folderId = el.dataset.folder ? Number(el.dataset.folder) : null;
-    mail.q = ""; $("q").value = "";
+    mail.q = ""; $("q").value = ""; mail.sel.clear();
     $("mailPage").classList.add("collapsed");
     renderTree(); loadList(false).catch(showListErr);
   });
@@ -104,21 +104,87 @@ function renderList() {
   if (!mail.items.length) {
     $("items").innerHTML = `<div class="none">${mail.q ? "Nichts gefunden." : mail.filter !== "all" ? "Keine Mails mit diesem Filter."
       : mail.accounts.length ? "Keine Mails in den letzten Wochen." : "Richte zuerst ein Mailkonto ein."}</div>`;
+    updateBulkBar();
     return;
   }
   const sentView = mail.items.every(i => i.folder_role === "sent" || i.folder_role === "drafts");
   $("items").innerHTML = mail.items.map(i => {
     const who = sentView ? "An: " + (i.to_addrs.replace(/"/g, "").split(/[<,]/)[0].trim() || i.to_addrs) : (i.from_name || i.from_addr);
-    return `<div class="item ${i.seen ? "" : "unread"} ${i.id === mail.current ? "on" : ""}" data-id="${i.id}">
+    return `<div class="item ${i.seen ? "" : "unread"} ${i.id === mail.current ? "on" : ""} ${mail.sel.has(i.id) ? "picked" : ""}" data-id="${i.id}">
       <span class="bar" style="background:${multi ? esc(i.account_color) : "transparent"}"></span>
+      <input type="checkbox" class="sel" data-sel="${i.id}" ${mail.sel.has(i.id) ? "checked" : ""} title="auswählen (Umschalt = Bereich)" aria-label="auswählen">
       <span class="who" title="${esc(i.from_addr)}">${esc(who)}</span>
       <span class="when">${listDate(i.date)}<span class="marks">${i.has_attachments ? " 📎" : ""}${i.answered ? " ↩" : ""}${i.flagged ? ' <span class="star">★</span>' : ""}</span></span>
       <span class="subj">${esc(i.subject || "(kein Betreff)")}</span>
       <span class="snip">${esc(i.snippet || "")}</span></div>`;
   }).join("") + (mail.more ? '<button class="more" id="moreBtn">Ältere laden</button>' : "");
-  $$("#items .item").forEach(el => el.onclick = () => openMessage(Number(el.dataset.id)));
+  $$("#items .item").forEach(el => el.onclick = (ev) => {
+    if (ev.target.classList.contains("sel")) return;
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey) { pick(Number(el.dataset.id), ev.shiftKey, true); return; }
+    openMessage(Number(el.dataset.id));
+  });
+  $$("#items .sel").forEach(cb => cb.onclick = (ev) => { ev.stopPropagation(); pick(Number(cb.dataset.sel), ev.shiftKey, false); });
   if (mail.more) $("moreBtn").onclick = () => loadList(true).catch(showListErr);
+  updateBulkBar();
 }
+
+// --- Mehrfachauswahl -----------------------------------------------------------
+function pick(id, range, toggle) {
+  const ids = mail.items.map(i => i.id);
+  if (range && mail.lastPick !== null && ids.includes(mail.lastPick)) {
+    const [a, b] = [ids.indexOf(mail.lastPick), ids.indexOf(id)].sort((x, y) => x - y);
+    ids.slice(a, b + 1).forEach(x => mail.sel.add(x));
+  } else if (mail.sel.has(id)) mail.sel.delete(id);
+  else mail.sel.add(id);
+  if (toggle !== undefined) mail.lastPick = id;
+  renderList();
+}
+
+function updateBulkBar() {
+  // Ausgewählte, die nicht mehr in der Liste stehen, vergessen
+  const shown = new Set(mail.items.map(i => i.id));
+  [...mail.sel].forEach(id => { if (!shown.has(id)) mail.sel.delete(id); });
+  const n = mail.sel.size;
+  $("bulkBar").classList.toggle("hidden", !n);
+  $("filters").classList.toggle("hidden", !!n);
+  $("items").classList.toggle("selecting", !!n);
+  if (!n) return;
+  $("bulkCount").textContent = n;
+  const accs = new Set(mail.items.filter(i => mail.sel.has(i.id)).map(i => i.account_id));
+  const a = accs.size === 1 ? mail.accounts.find(x => x.id === [...accs][0]) : null;
+  $("bulkMove").disabled = !a;
+  $("bulkMove").title = a ? "verschieben" : "Verschieben geht nur mit Mails aus einem Konto";
+  $("bulkMove").innerHTML = '<option value="">📁 …</option>' + (a ? a.folders.map(f =>
+    `<option value="${f.id}">${esc(f.role ? folderName(f) : f.name)}</option>`).join("") : "");
+}
+
+async function bulkAction(action, folderId) {
+  const ids = [...mail.sel];
+  if (!ids.length) return;
+  if (action === "delete") {
+    const inTrash = mail.items.filter(i => mail.sel.has(i.id) && i.folder_role === "trash").length;
+    if (inTrash && !confirm(`${inTrash} der ausgewählten Mails ${inTrash === 1 ? "liegt" : "liegen"} schon im Papierkorb und ` +
+                            "werden endgültig gelöscht. Fortfahren?")) return;
+  }
+  try {
+    await api("messages/bulk", { method: "POST", body: { ids, action, folder_id: folderId || null } });
+    if (action === "seen" || action === "unseen") {
+      mail.items.forEach(i => { if (mail.sel.has(i.id)) i.seen = action === "seen"; });
+    } else {
+      mail.items = mail.items.filter(i => !mail.sel.has(i.id));
+      if (mail.current && ids.includes(mail.current)) { mail.current = null; readerEmpty(); }
+    }
+    mail.sel.clear();
+    renderList();
+    refreshFolders().catch(() => {});
+  } catch (e) { alert(e.message); }
+}
+$("bulkAll").onclick = () => { mail.items.forEach(i => mail.sel.add(i.id)); renderList(); };
+$("bulkNone").onclick = () => { mail.sel.clear(); renderList(); };
+$("bulkDel").onclick = () => bulkAction("delete");
+$("bulkSeen").onclick = () => bulkAction("seen");
+$("bulkUnseen").onclick = () => bulkAction("unseen");
+$("bulkMove").onchange = () => { const f = Number($("bulkMove").value); if (f) bulkAction("move", f); };
 
 // --- Lesen ------------------------------------------------------------------
 function textToHtml(text) {
@@ -512,7 +578,9 @@ $("mailPage").classList.add("collapsed");
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("composeModal").classList.contains("hidden")) { $("cClose").click(); return; }
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
-  if (e.key === "Delete" && !typing && state.tab === "mail" && mail.current && $("composeModal").classList.contains("hidden")) {
-    deleteMessage(mail.current);
+  if (e.key === "Delete" && !typing && state.tab === "mail" && $("composeModal").classList.contains("hidden")) {
+    if (mail.sel.size) bulkAction("delete");
+    else if (mail.current) deleteMessage(mail.current);
   }
+  if (e.key === "Escape" && mail.sel.size && !typing) { mail.sel.clear(); renderList(); }
 });

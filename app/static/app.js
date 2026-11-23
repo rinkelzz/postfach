@@ -69,7 +69,7 @@ const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { ret
                 set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* egal */ } } };
 
 // ---------- Start, Anmeldung, Reiter ----------
-const TABS = ["mail", "accounts", "admin", "me"];
+const TABS = ["mail", "contacts", "accounts", "admin", "me"];
 function showLogin() {
   $("appView").classList.add("hidden"); $("loginView").classList.remove("hidden");
   setTimeout(() => $("lu").focus(), 0);
@@ -130,6 +130,7 @@ async function showTab(name) {
   history.replaceState(null, "", "#" + name + (name === "admin" ? "/" + (store.get("asec") || "benutzer") : ""));
   try {
     if (name === "mail" && window.loadMail) await loadMail();
+    if (name === "contacts" && window.loadContacts) await loadContacts(false);
     if (name === "accounts" && window.loadAccounts) { if (typeof acc !== "undefined") acc.rulesLoaded = false; await loadAccounts(); }
     if (name === "admin") { showAdminSec(store.get("asec") || "benutzer"); await loadAdmin(); }
     if (name === "me") loadMe();

@@ -16,7 +16,7 @@ import time
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from . import crypto, imapclient, mailparse, rules
+from . import contacts, crypto, imapclient, mailparse, rules
 from .db import connect, get_setting
 from .timeutil import now_utc, now_utc_str, parse_utc, to_utc_str
 
@@ -94,7 +94,7 @@ def _flags(flags: set) -> Dict[str, int]:
     return {"seen": int("\\seen" in flags), "flagged": int("\\flagged" in flags), "answered": int("\\answered" in flags)}
 
 
-def _insert_headers(conn: sqlite3.Connection, account_id: int, folder_id: int, rec: Dict, rules_done: int = 1) -> None:
+def _insert_headers(conn: sqlite3.Connection, account_id: int, folder_id: int, rec: Dict, rules_done: int = 1) -> Dict:
     lit = rec["literals"][0] if rec["literals"] else b""
     h = mailparse.parse_headers(lit, rec.get("internaldate", ""))
     f = _flags(rec["flags"])
@@ -105,6 +105,16 @@ def _insert_headers(conn: sqlite3.Connection, account_id: int, folder_id: int, r
         (account_id, folder_id, rec["uid"], h["message_id"], h["in_reply_to"], h["refs"], h["subject"][:500],
          h["from_name"][:200], h["from_addr"][:200], h["to_addrs"][:2000], h["cc_addrs"][:2000], h["reply_to"][:500],
          to_utc_str(h["date"]), rec["size"], f["seen"], f["flagged"], f["answered"], h["has_attachments"], rules_done))
+    return h
+
+
+def _collect_contacts(conn: sqlite3.Connection, account: sqlite3.Row, role: str, h: Dict) -> None:
+    """Adressbuch: Absender aus dem Posteingang, Empfänger aus „Gesendet“."""
+    when = to_utc_str(h["date"])
+    if role == "inbox" and h["from_addr"]:
+        contacts.collect(conn, account["owner_id"], [(h["from_name"], h["from_addr"])], "received", when)
+    elif role == "sent":
+        contacts.collect(conn, account["owner_id"], contacts.parse(h["to_addrs"]) + contacts.parse(h["cc_addrs"]), "sent", when)
 
 
 def _update_counts(conn: sqlite3.Connection, folder_id: int) -> None:
@@ -152,7 +162,8 @@ def sync_folder(conn: sqlite3.Connection, account: sqlite3.Row, folder: sqlite3.
             conn.execute("BEGIN")
             try:
                 for rec in recs:
-                    _insert_headers(conn, account["id"], folder["id"], rec, rules_done)
+                    h = _insert_headers(conn, account["id"], folder["id"], rec, rules_done)
+                    _collect_contacts(conn, account, folder["role"], h)
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -416,3 +427,45 @@ def delete_draft(conn: sqlite3.Connection, account: sqlite3.Row, message_id: str
         client.delete(client.uids_by_message_id(message_id))
     conn.execute("DELETE FROM messages WHERE folder_id = ? AND message_id = ?", (drafts["id"], message_id))
     _update_counts(conn, drafts["id"])
+
+
+# --- Mehrere Nachrichten auf einmal -------------------------------------------
+
+def bulk(conn: sqlite3.Connection, account: sqlite3.Row, messages: List[sqlite3.Row], action: str,
+         dest: Optional[sqlite3.Row] = None) -> Dict[str, int]:
+    """delete | move | seen | unseen für mehrere Nachrichten eines Kontos – eine Verbindung, je Ordner ein Befehl.
+    delete: in den Papierkorb; was schon im Papierkorb liegt (oder ohne Papierkorb), wird endgültig gelöscht."""
+    by_folder: Dict[int, List[sqlite3.Row]] = {}
+    for m in messages:
+        by_folder.setdefault(m["folder_id"], []).append(m)
+    trash = folder_by_role(conn, account["id"], "trash")
+    stats = {"trash": 0, "deleted": 0, "moved": 0, "flagged": 0}
+    with open_client(account) as client:
+        for folder_id, msgs in by_folder.items():
+            folder = conn.execute("SELECT * FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            uids = [m["uid"] for m in msgs]
+            ids = [m["id"] for m in msgs]
+            client.select(folder["path"], readonly=False)
+            if action in ("seen", "unseen"):
+                client.store_flags(uids, "\\Seen", action == "seen")
+                conn.execute(f"UPDATE messages SET seen = ? WHERE id IN ({','.join('?' * len(ids))})",
+                             [int(action == "seen")] + ids)
+                stats["flagged"] += len(ids)
+            else:
+                if action == "move":
+                    if dest["id"] == folder["id"]:
+                        continue
+                    client.move(uids, dest["path"])
+                    stats["moved"] += len(ids)
+                elif trash and trash["id"] != folder["id"]:
+                    client.move(uids, trash["path"])
+                    stats["trash"] += len(ids)
+                else:
+                    client.delete(uids)
+                    stats["deleted"] += len(ids)
+                conn.execute(f"DELETE FROM messages WHERE id IN ({','.join('?' * len(ids))})", ids)
+            _update_counts(conn, folder_id)
+    if action in ("move", "delete"):
+        target = dest if action == "move" else trash
+        start_sync(account["id"], roles=(target["role"],) if target is not None and target["role"] else None)
+    return stats

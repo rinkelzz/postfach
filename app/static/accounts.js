@@ -125,7 +125,11 @@ function openAccForm(formId, a, reload) {
       ["imap_host", "imap_port", "imap_security", "imap_user", "smtp_host", "smtp_port", "smtp_security"].forEach(k => fill(k, s[k]));
       if (!f("name").value) f("name").value = s.provider || email.split("@")[1];
       const hint = box.querySelector("[data-hint]");
-      hint.innerHTML = (s.provider ? `<b>${esc(s.provider)}</b> erkannt – Server sind eingetragen. ` : "") + esc(s.hint || "");
+      hint.innerHTML = (s.provider ? `<b>${esc(s.provider)}</b> erkannt – Server sind eingetragen. ` : "") + esc(s.hint || "") +
+        ((s.steps || []).length ? `<ol style="margin:6px 0;padding-left:20px">${s.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : "") +
+        ((s.links || []).length ? `<div class="row" style="gap:6px">${s.links.map(([t, u]) =>
+          `<a class="btn small" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)} ↗</a>`).join("")}</div>` : "") +
+        (s.note ? `<div class="muted small" style="margin-top:4px">${esc(s.note)}</div>` : "");
       hint.classList.toggle("hidden", !(s.provider || s.hint));
     } catch (e) { /* egal */ }
   });
