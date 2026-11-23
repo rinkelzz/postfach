@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from .. import updates
+from ..config import settings
 from ..security import admin_user
 
 router = APIRouter(tags=["Updates"])
@@ -27,6 +28,8 @@ def _local_only(request: Request) -> None:
 def package_source(request: Request):
     """Paketliste im Format, das DSM für Paketquellen erwartet."""
     _local_only(request)
+    if settings.update_check:
+        updates.ensure_known()
     base = str(request.base_url).rstrip("/")
     return JSONResponse(updates.catalog(base), headers={"Cache-Control": "no-store"})
 

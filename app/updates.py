@@ -56,10 +56,10 @@ def _http(url: str, timeout: float = 20):
     return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 – feste https-Adressen
 
 
-def fetch_latest() -> Optional[Dict]:
+def fetch_latest(timeout: float = 20) -> Optional[Dict]:
     """Neuestes Release mit SPK von GitHub (oder None, wenn keins da ist)."""
     try:
-        with _http(API_URL.format(repo=REPO)) as r:
+        with _http(API_URL.format(repo=REPO), timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         if e.code == 404:  # noch kein Release veröffentlicht
@@ -141,6 +141,24 @@ def check(force: bool = False) -> Dict:
         _state["checked_at"] = time.time()
         _lock.release()
     return status()
+
+
+def ensure_known(timeout_s: float = 10) -> None:
+    """Für die Paketquelle: Ist noch kein Release bekannt (z. B. direkt nach dem Start der App), jetzt sofort bei GitHub
+    nachfragen – sonst bekäme das Paket-Zentrum eine leere Liste und merkt sich die eine Weile. Die SPK selbst wird im
+    Hintergrund geladen; bis dahin zeigt der Download-Link direkt auf GitHub."""
+    if _state["release"] is not None or time.time() - _state.get("quick_at", 0.0) < 60:
+        return
+    _state["quick_at"] = time.time()
+    try:
+        rel = fetch_latest(timeout_s)
+    except Exception as e:  # noqa: BLE001
+        _state["error"] = f"{type(e).__name__}: {e}"
+        return
+    if rel and _state["release"] is None:
+        _state["release"] = rel
+        _state["checked_at"] = 0.0  # vollständige Prüfung (mit Download) gleich im Hintergrund
+        check_in_background()
 
 
 def check_in_background() -> None:

@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.3.1] – 2026-11-23
+
+### Behoben
+- **Paket-Zentrum zeigte ein Update manchmal erst verspätet an:** Fragte das Paket-Zentrum direkt nach dem Start der App,
+  kannte Postfach die neueste Version noch nicht und antwortete mit einer leeren Liste – die DSM sich eine Weile merkt.
+  Jetzt fragt die Paketquelle in dem Fall sofort bei GitHub nach; die SPK wird im Hintergrund auf die NAS geladen.
+
 ## [0.3.0] – 2026-11-23
 
 ### Neu: Regeln
@@ -78,6 +85,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.3.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.1
 [0.3.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.2.0
 [0.1.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.1

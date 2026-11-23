@@ -128,3 +128,16 @@ def test_only_noarch_packages(monkeypatch):
     assert r["name"] == "postfach-99.2.0-0001-noarch.spk" and r["version"] == "99.2.0-0001"
     rel["assets"] = rel["assets"][:2]  # fremde Pakete werden nie angeboten
     assert updates.fetch_latest() is None
+
+
+def test_package_source_asks_github_right_away(fake_github, monkeypatch):
+    """Direkt nach dem Start (noch kein Release bekannt) darf die Paketquelle nicht leer antworten."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "update_check", True)
+    monkeypatch.setitem(updates._state, "quick_at", 0.0)
+    monkeypatch.setattr(updates, "check_in_background", lambda: None)  # Download hier nicht nötig
+    with TestClient(app) as c:
+        pkgs = c.get("/spk").json()["packages"]
+    assert [p["version"] for p in pkgs] == ["99.1.0-0001"]
+    assert pkgs[0]["link"] == "https://example.org/spk"   # SPK noch nicht auf der NAS → direkt von GitHub
+    assert "md5" not in pkgs[0]
