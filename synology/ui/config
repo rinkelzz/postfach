@@ -1,0 +1,24 @@
+{
+    "Postfach.js": {
+        "SYNO.SDS.Postfach.Application": {
+            "type": "app",
+            "title": "Postfach",
+            "desc": "E-Mail für IMAP-Konten",
+            "icon": "images/icon_{0}.png",
+            "texts": "texts",
+            "allUsers": true,
+            "allowMultiInstance": false,
+            "appWindow": "SYNO.SDS.Postfach.AppWindow",
+            "grantPrivilege": "all",
+            "advanceGrantPrivilege": true,
+            "depend": ["SYNO.SDS.Postfach.AppWindow"]
+        },
+        "SYNO.SDS.Postfach.AppWindow": {
+            "type": "lib",
+            "title": "Postfach",
+            "icon": "images/icon_{0}.png",
+            "texts": "texts",
+            "depend": []
+        }
+    }
+}
