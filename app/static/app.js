@@ -130,7 +130,7 @@ async function showTab(name) {
   history.replaceState(null, "", "#" + name + (name === "admin" ? "/" + (store.get("asec") || "benutzer") : ""));
   try {
     if (name === "mail" && window.loadMail) await loadMail();
-    if (name === "accounts" && window.loadAccounts) await loadAccounts();
+    if (name === "accounts" && window.loadAccounts) { if (typeof acc !== "undefined") acc.rulesLoaded = false; await loadAccounts(); }
     if (name === "admin") { showAdminSec(store.get("asec") || "benutzer"); await loadAdmin(); }
     if (name === "me") loadMe();
   } catch (e) { console.error(e); }

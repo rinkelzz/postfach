@@ -2,6 +2,24 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.3.0] – 2026-11-23
+
+### Neu: Regeln
+- Regeln für **neue Mails im Posteingang** (unter **Konten → Regeln**). Sie laufen auf der NAS – auch wenn Postfach
+  gerade nicht offen ist – und dank IDLE meist Sekunden nach dem Eingang.
+- Bedingungen: Absender, Empfänger (An/Kopie), Betreff, Text, hat Anhang – mit „enthält“, „enthält nicht“, „ist gleich“,
+  „endet auf“ (z. B. `@kunde.de`); alle oder eine der Bedingungen. Für ein bestimmtes Konto oder alle eigenen Konten.
+- Aktionen: **Verschieben** in einen Ordner, **Weiterleiten** an eine Adresse (mit Anhängen, Antworten gehen an den
+  ursprünglichen Absender), **in den Papierkorb**. Reihenfolge per ↑ ↓, „danach keine weiteren Regeln“.
+- **Jetzt anwenden** auf Mails, die schon im Posteingang liegen – mit Vorschau, wie viele passen. Weitergeleitet wird
+  dabei nie, nur verschoben bzw. gelöscht.
+- **⚙ Regel** beim Lesen einer Mail legt eine Regel für diesen Absender an.
+- Beim ersten Abruf eines Kontos werden keine Regeln angewendet (sonst würde z. B. eine Weiterleitung 90 Tage Post verschicken).
+- Schutz vor Mail-Schleifen: automatische Mails (Abwesenheitsnotizen, Rückläufer, Massenmails) und schon von Postfach
+  weitergeleitete Mails werden nie weitergeleitet, nie an die eigene Adresse, höchstens 50 Weiterleitungen pro Konto
+  und Stunde. Treffer und Fehler (z. B. gelöschter Zielordner) stehen an der Regel.
+- Regeln sieht nur ihr Besitzer – auch Admins nicht (sie verraten viel über die Mails eines Benutzers).
+
 ## [0.2.0] – 2026-11-23
 
 ### Neu
@@ -60,6 +78,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.3.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.2.0
 [0.1.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.0

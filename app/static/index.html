@@ -93,6 +93,15 @@
       <div class="err" id="accErr"></div>
     </section>
     <section class="card accform hidden" id="accForm"></section>
+    <section class="card" id="rulesCard">
+      <div class="toolbar"><h2>Regeln</h2><button class="primary" id="ruleNew">＋ Regel anlegen</button></div>
+      <p class="muted small" style="margin-top:-6px">Regeln gelten für <b>neue</b> Mails im Posteingang und laufen auf der NAS – auch wenn
+        Postfach gerade nicht offen ist. Von oben nach unten; die Reihenfolge änderst du mit ↑ ↓. Für Mails, die schon da sind,
+        gibt es „Jetzt anwenden“ (ohne Weiterleiten).</p>
+      <div id="ruleList" class="rulelist"></div>
+      <div class="err" id="ruleErr"></div>
+      <section class="ruleform hidden" id="ruleForm"></section>
+    </section>
   </div>
 
   <!-- VERWALTUNG -->
@@ -291,5 +300,6 @@
 <script src="static/app.js?v={{v}}"></script>
 <script src="static/accounts.js?v={{v}}"></script>
 <script src="static/mail.js?v={{v}}"></script>
+<script src="static/rules.js?v={{v}}"></script>
 </body>
 </html>

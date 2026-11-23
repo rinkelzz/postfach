@@ -33,6 +33,7 @@ async function loadAccounts() {
   bindAccRows($("accList"), acc.mine, "accForm", "accErr", loadAccounts);
   if (!acc.mine.length && mayAdd && $("accForm").classList.contains("hidden")) openAccForm("accForm", null, loadAccounts);
   if (acc.mine.some(a => a.syncing)) setTimeout(() => { if (state.tab === "accounts") loadAccounts().catch(() => {}); }, 3000);
+  if (window.loadRules && !acc.rulesLoaded) { acc.rulesLoaded = true; loadRules().catch(e => { $("ruleErr").textContent = e.message; }); }
 }
 
 async function loadAllAccounts() {

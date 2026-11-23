@@ -151,10 +151,37 @@ CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id);
 """)
 
 
+def _m3_regeln(conn: sqlite3.Connection) -> None:
+    """Version 0.3: Regeln für neue Mails im Posteingang."""
+    _run(conn, """
+CREATE TABLE IF NOT EXISTS rules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id  INTEGER REFERENCES accounts(id) ON DELETE CASCADE,   -- NULL = alle eigenen Konten
+    name        TEXT NOT NULL,
+    position    INTEGER NOT NULL DEFAULT 0,
+    active      INTEGER NOT NULL DEFAULT 1,
+    match_all   INTEGER NOT NULL DEFAULT 1,     -- 1 = alle Bedingungen, 0 = eine reicht
+    conditions  TEXT NOT NULL DEFAULT '[]',     -- JSON: [{field, op, value}]
+    actions     TEXT NOT NULL DEFAULT '[]',     -- JSON: [{type: move|forward|trash, folder?, to?}]
+    stop        INTEGER NOT NULL DEFAULT 0,     -- danach keine weiteren Regeln
+    hits        INTEGER NOT NULL DEFAULT 0,
+    last_hit    TEXT,
+    last_error  TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rules_owner ON rules(owner_id, position)
+""")
+    if "rules_done" not in _columns(conn, "messages"):
+        # 1 = Regeln schon angewendet bzw. nicht nötig (alles, was vor dieser Version da war, und der erste Abruf)
+        conn.execute("ALTER TABLE messages ADD COLUMN rules_done INTEGER NOT NULL DEFAULT 1")
+
+
 # Version → Schritt. Nur anhängen, nie ändern!
 MIGRATIONS: Dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _m1_basis,
     2: _m2_mail,
+    3: _m3_regeln,
 }
 SCHEMA_VERSION = max(MIGRATIONS)
 

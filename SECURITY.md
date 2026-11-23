@@ -52,6 +52,10 @@ Unterstützt wird jeweils die neueste Version unter [Releases](https://github.co
   geprüft (höchstens 100), Anhänge zusammen höchstens 25 MB. Bcc steht nicht in der verschickten Mail.
 - **Verbindungen zu Mailservern** nur mit SSL/TLS oder STARTTLS, Zertifikat und Servername werden geprüft. Nur beim
   Postausgang gibt es „keine Verschlüsselung“ für Relays im eigenen Netz.
+- **Regeln** gehören einem Benutzer und gelten nur für seine Konten; niemand sonst (auch kein Admin) sieht sie.
+  Weiterleiten nur an gültige fremde Adressen (nicht an die eigene), weitergeleitete Mails tragen `Auto-Submitted:
+  auto-forwarded` und eine eigene Kennung; automatische Mails, Rückläufer und schon weitergeleitete Mails werden nie
+  weitergeleitet, höchstens 50 Weiterleitungen pro Konto und Stunde. „Jetzt anwenden“ leitet nie weiter.
 - **Server-Adressen** sind frei wählbar (eigene Mailserver, eigene Ports). Damit kann jeder, der Konten anlegen darf,
   die NAS Verbindungen zu beliebigen Servern aufbauen lassen. Wer das nicht möchte, schaltet unter
   **Verwaltung → Einstellungen** ab, dass Benutzer selbst Konten hinzufügen – dann gilt das auch für den Verbindungstest.

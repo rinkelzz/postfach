@@ -16,7 +16,7 @@ import time
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from . import crypto, imapclient, mailparse
+from . import crypto, imapclient, mailparse, rules
 from .db import connect, get_setting
 from .timeutil import now_utc, now_utc_str, parse_utc, to_utc_str
 
@@ -83,17 +83,17 @@ def _flags(flags: set) -> Dict[str, int]:
     return {"seen": int("\\seen" in flags), "flagged": int("\\flagged" in flags), "answered": int("\\answered" in flags)}
 
 
-def _insert_headers(conn: sqlite3.Connection, account_id: int, folder_id: int, rec: Dict) -> None:
+def _insert_headers(conn: sqlite3.Connection, account_id: int, folder_id: int, rec: Dict, rules_done: int = 1) -> None:
     lit = rec["literals"][0] if rec["literals"] else b""
     h = mailparse.parse_headers(lit, rec.get("internaldate", ""))
     f = _flags(rec["flags"])
     conn.execute(
         "INSERT OR IGNORE INTO messages(account_id, folder_id, uid, message_id, in_reply_to, refs, subject, from_name, "
-        "from_addr, to_addrs, cc_addrs, reply_to, date_utc, size, seen, flagged, answered, has_attachments) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "from_addr, to_addrs, cc_addrs, reply_to, date_utc, size, seen, flagged, answered, has_attachments, rules_done) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (account_id, folder_id, rec["uid"], h["message_id"], h["in_reply_to"], h["refs"], h["subject"][:500],
          h["from_name"][:200], h["from_addr"][:200], h["to_addrs"][:2000], h["cc_addrs"][:2000], h["reply_to"][:500],
-         to_utc_str(h["date"]), rec["size"], f["seen"], f["flagged"], f["answered"], h["has_attachments"]))
+         to_utc_str(h["date"]), rec["size"], f["seen"], f["flagged"], f["answered"], h["has_attachments"], rules_done))
 
 
 def _update_counts(conn: sqlite3.Connection, folder_id: int) -> None:
@@ -104,8 +104,12 @@ def _update_counts(conn: sqlite3.Connection, folder_id: int) -> None:
 
 def sync_folder(conn: sqlite3.Connection, account: sqlite3.Row, folder: sqlite3.Row, client) -> Dict:
     uidvalidity, _exists = client.select(folder["path"], readonly=True)
+    # Erster Abruf (oder Neuaufbau) des Ordners: was da ist, ist nicht „neu“ → keine Regeln darauf anwenden
+    initial = folder["uidvalidity"] is None
     if folder["uidvalidity"] is not None and uidvalidity and folder["uidvalidity"] != uidvalidity:
         conn.execute("DELETE FROM messages WHERE folder_id = ?", (folder["id"],))  # Nummern gelten nicht mehr
+        initial = True
+    rules_done = 1 if initial or folder["role"] != "inbox" else 0
     conn.execute("UPDATE folders SET uidvalidity = ? WHERE id = ?", (uidvalidity or None, folder["id"]))
     since = (now_utc() - timedelta(days=int(account["sync_days"] or 90))).date()
     remote = set(client.uids_since(since))
@@ -137,7 +141,7 @@ def sync_folder(conn: sqlite3.Connection, account: sqlite3.Row, folder: sqlite3.
             conn.execute("BEGIN")
             try:
                 for rec in recs:
-                    _insert_headers(conn, account["id"], folder["id"], rec)
+                    _insert_headers(conn, account["id"], folder["id"], rec, rules_done)
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -223,6 +227,10 @@ def sync_account(account_id: int, bodies: bool = True, budget: float = BODY_TIME
                         continue
                     result["new"] += r["new"]
                     result["gone"] += r["gone"]
+                try:
+                    result["rules"] = rules.process_new(conn, account, client)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[postfach] Regeln Konto {account_id}: {e}", flush=True)
                 if bodies:
                     result["bodies"] = _load_bodies(conn, account, client, time.time() + budget)
             conn.execute("UPDATE accounts SET last_sync = ?, last_error = NULL WHERE id = ?", (now_utc_str(), account_id))

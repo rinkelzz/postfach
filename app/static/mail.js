@@ -161,6 +161,7 @@ async function openMessage(id, images) {
         <button id="rDel" title="${m.delete_permanent ? "endgültig löschen" : "in den Papierkorb (Entf)"}">🗑${m.delete_permanent ? " Endgültig" : ""}</button>
         <select id="rMove" title="in einen anderen Ordner verschieben" class="movesel"><option value="">📁 Verschieben …</option>${moveOptions(m)}</select>
         <button id="rStar" title="markieren">${m.flagged ? "★" : "☆"}</button>
+        ${m.is_draft ? "" : '<button id="rRule" title="Regel für Mails von diesem Absender anlegen">⚙ Regel</button>'}
         <button id="rUnread" title="als ungelesen markieren">●</button></div>
       <h2>${esc(m.subject || "(kein Betreff)")}</h2>
       <div class="from"><span class="av" style="background:${esc((mail.accounts.find(a => a.id === m.account_id) || {}).color || "")}">${esc(initials(m.from_name || m.from_addr))}</span>
@@ -196,6 +197,7 @@ async function openMessage(id, images) {
     $("rFwd").onclick = () => openDraft(id, "forward");
   }
   $("rDel").onclick = () => deleteMessage(id);
+  if ($("rRule")) $("rRule").onclick = () => ruleFromMessage(m);
   $("rMove").onchange = () => { const f = Number($("rMove").value); if (f) moveMessage(id, f); };
   $("rStar").onclick = () => setFlags(id, { flagged: !m.flagged });
   $("rUnread").onclick = async () => { await setFlags(id, { seen: false }); readerEmpty(); mail.current = null; renderList(); };

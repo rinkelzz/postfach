@@ -10,9 +10,9 @@ Ein E-Mail-Programm für IMAP-Konten – als Paket auf der eigenen Synology NAS,
 Mehrere Benutzer, jeder mit seinen eigenen Mailkonten, alle Posteingänge in einer Liste. Wer in DSM angemeldet ist,
 ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen Zwischenspeicher für schnelles Suchen.
 
-> **Stand:** Version 0.2 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
-> Löschen/Papierkorb, Verschieben und automatisch gespeicherte Entwürfe. Als Nächstes: Regeln, dann
-> Gmail/Microsoft 365 – siehe [Fahrplan](#fahrplan).
+> **Stand:** Version 0.3 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
+> Löschen/Papierkorb, Verschieben, automatisch gespeicherte Entwürfe und **Regeln** (verschieben, weiterleiten,
+> Papierkorb). Als Nächstes: Gmail/Microsoft 365 – siehe [Fahrplan](#fahrplan).
 
 ![Posteingang](docs/screenshots/posteingang.png)
 
@@ -21,6 +21,7 @@ ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen 
 - [Funktionen](#funktionen)
 - [Benutzer und Rechte](#benutzer-und-rechte)
 - [Mailkonto einrichten](#mailkonto-einrichten)
+- [Regeln](#regeln)
 - [Sicherheit der Mails](#sicherheit-der-mails)
 - [Fahrplan](#fahrplan)
 - [Installation auf der Synology](#installation-auf-der-synology)
@@ -88,6 +89,26 @@ Besonderheiten einiger Anbieter:
 - **Microsoft 365 / Outlook.com:** Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr. Die
   Anmeldung über Microsoft (OAuth2) kommt in einer späteren Version.
 
+## Regeln
+
+Unter **Konten → Regeln** (oder mit **⚙ Regel** beim Lesen einer Mail) legt jeder Benutzer Regeln für **neue Mails im
+Posteingang** an – zum Beispiel:
+
+- Absender endet auf `@newsletter.de` → verschieben nach „Newsletter“
+- Betreff enthält „Rechnung“ **und** hat Anhang → weiterleiten an die Buchhaltung
+- Text enthält „Casino“ → in den Papierkorb
+
+Bedingungen: Absender, Empfänger (An/Kopie), Betreff, Text, hat Anhang – „enthält“, „enthält nicht“, „ist gleich“,
+„endet auf“; alle oder eine davon. Regeln laufen auf der NAS (auch wenn niemand Postfach offen hat), von oben nach unten;
+„danach keine weiteren Regeln“ beendet die Auswertung. Mit **Jetzt anwenden** lässt sich eine Regel nachträglich auf den
+Posteingang anwenden – mit Vorschau, und ohne Weiterleiten.
+
+Beim Weiterleiten schützt Postfach vor Mail-Schleifen: Abwesenheitsnotizen, Rückläufer, Massenmails und schon
+weitergeleitete Mails werden nicht weitergeleitet, höchstens 50 Weiterleitungen pro Konto und Stunde. Regeln sieht nur ihr
+Besitzer, auch Admins nicht.
+
+![Regeln](docs/screenshots/regeln.png)
+
 ## Sicherheit der Mails
 
 - **Passwörter der Mailkonten** müssen für IMAP/SMTP lesbar bleiben und werden deshalb **verschlüsselt** gespeichert
@@ -109,8 +130,8 @@ Mehr in [SECURITY.md](SECURITY.md).
 | Version | Inhalt |
 |---|---|
 | 0.1 | Lesen + Senden: Konten, Abruf, Ordner, gemeinsamer Posteingang, Suche, Anhänge, Antworten/Weiterleiten, Rechte für Admins |
-| **0.2** | **Neue Mails sofort (IMAP IDLE), Browser-Benachrichtigung, Löschen/Papierkorb, Verschieben, Entwürfe** |
-| 0.3 | Regeln/Filter (Absender, Betreff, Konto → verschieben, markieren, weiterleiten) |
+| 0.2 | Neue Mails sofort (IMAP IDLE), Browser-Benachrichtigung, Löschen/Papierkorb, Verschieben, Entwürfe |
+| **0.3** | **Regeln: verschieben, weiterleiten, Papierkorb – für neue Mails, „Jetzt anwenden“ für vorhandene** |
 | 0.4 | Gmail und Microsoft 365 per OAuth2 |
 
 ## Installation auf der Synology
@@ -222,4 +243,5 @@ its own DSM window with single sign-on for DSM users. The user interface is Germ
 - One noarch package for Intel/AMD and ARM, no native libraries; uses the NAS's Python 3.8–3.13. Nightly backups,
   updates through Package Center, four themes, audit log, configurable port.
 - New mail arrives instantly via IMAP IDLE with browser notifications; delete to trash, move, auto-saved drafts.
-- Roadmap: rules/filters, Gmail/Microsoft 365 via OAuth2.
+- Server-side rules for new inbox mail (move, forward, trash) with mail-loop protection.
+- Roadmap: Gmail/Microsoft 365 via OAuth2.

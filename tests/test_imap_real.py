@@ -182,3 +182,42 @@ def test_real_server_idle_move_delete_drafts(tmp_path):
                     c.select(folders["drafts"]["path"])
                     assert c.uids_by_message_id("<d1@test.de>") == []
     crypto._cache.clear()
+
+
+def test_real_server_rules(tmp_path):
+    import json
+    host, port, sec, user, pw = _cfg()
+    _reset_and_fill()
+    with fresh_db(tmp_path):
+        crypto._cache.clear()
+        with connect() as conn:
+            acc_id = conn.execute(
+                "INSERT INTO accounts(owner_id, name, email, imap_host, imap_port, imap_security, imap_user, smtp_host, "
+                "secret, created_at) VALUES (1, 'Test', ?, ?, ?, ?, ?, '', ?, ?)",
+                (user, host, port, sec, user, crypto.pack_secrets(pw), now_utc_str())).lastrowid
+        assert sync.sync_account(acc_id)["error"] is None
+        with connect() as conn:
+            for name, conds, acts in (
+                    ("Angebote", [{"field": "subject", "op": "contains", "value": "angebot"}],
+                     [{"type": "move", "folder": "Gesch&AOQ-ftlich"}]),
+                    ("Spam", [{"field": "body", "op": "contains", "value": "casino"}], [{"type": "trash"}])):
+                conn.execute("INSERT INTO rules(owner_id, account_id, name, conditions, actions, created_at) "
+                             "VALUES (1, ?, ?, ?, ?, ?)", (acc_id, name, json.dumps(conds), json.dumps(acts), now_utc_str()))
+        c = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context()) if sec == "ssl" else imaplib.IMAP4(host, port)
+        c.login(user, pw)
+        now = imaplib.Time2Internaldate(time.time())
+        c.append("INBOX", "()", now, mail(subject="Neues Angebot Server"))
+        c.append("INBOX", "()", now, mail(subject="Gewinn", text="Besuchen Sie unser Casino"))
+        c.append("INBOX", "()", now, mail(subject="Normal"))
+        c.logout()
+        r = sync.sync_account(acc_id)
+        assert r["rules"]["moved"] == 1 and r["rules"]["trashed"] == 1, r
+        while sync.is_running(acc_id):
+            time.sleep(0.1)
+        sync.sync_account(acc_id)
+        with connect() as conn:
+            where = {m["subject"]: m["role"] or m["name"] for m in conn.execute(
+                "SELECT m.subject, f.role, f.name FROM messages m JOIN folders f ON f.id = m.folder_id")}
+        assert where["Neues Angebot Server"] == "Geschäftlich" and where["Gewinn"] == "trash"
+        assert where["Normal"] == "inbox" and where["Rechnung"] == "inbox"   # vorhandene Mails bleiben
+    crypto._cache.clear()
