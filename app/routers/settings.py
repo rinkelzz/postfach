@@ -30,9 +30,11 @@ class SettingsIn(BaseModel):
     dsm_url: Optional[str] = Field(None, max_length=200)
     sync_interval: Optional[int] = Field(None, ge=1, le=60, description="Minuten zwischen zwei Abrufen")
     users_add_accounts: Optional[bool] = Field(None, description="Benutzer dürfen selbst Mailkonten anlegen")
+    ms_client_id: Optional[str] = Field(None, max_length=60, description="Microsoft 365: Client-ID der App-Registrierung")
+    ms_tenant: Optional[str] = Field(None, max_length=100, description="Microsoft 365: organizations, Mandanten-ID oder Domain")
 
 
-ADMIN_ONLY = ("dsm_url", "public_url_env")
+ADMIN_ONLY = ("dsm_url", "public_url_env", "ms_client_id", "ms_tenant")
 
 
 def settings_out(conn) -> dict:
@@ -49,6 +51,9 @@ def settings_out(conn) -> dict:
         "dsm_url": get_setting(conn, "dsm_url"),
         "sync_interval": int(get_setting(conn, "sync_interval") or 5),
         "users_add_accounts": get_setting(conn, "users_add_accounts") == "1",
+        "ms_client_id": get_setting(conn, "ms_client_id"),
+        "ms_tenant": get_setting(conn, "ms_tenant") or "organizations",
+        "ms_ready": bool(get_setting(conn, "ms_client_id")),
     }
 
 
@@ -78,6 +83,19 @@ def update_settings(data: SettingsIn, admin=Depends(admin_user), conn: sqlite3.C
             raise HTTPException(400, "Die DSM-Adresse muss auf die NAS selbst zeigen, z. B. http://127.0.0.1:5000 "
                                      "oder https://localhost:5001 – andere Rechner sind aus Sicherheitsgründen nicht erlaubt.")
         set_setting(conn, "dsm_url", url)
+    if "ms_client_id" in changes:
+        from ..oauth import CLIENT_RE
+        cid = (data.ms_client_id or "").strip()
+        if cid and not CLIENT_RE.match(cid):
+            raise HTTPException(400, "Die Client-ID hat das Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx "
+                                     "(Entra ID → App-Registrierung → Übersicht → Anwendungs-ID)")
+        set_setting(conn, "ms_client_id", cid)
+    if "ms_tenant" in changes:
+        from ..oauth import TENANT_RE
+        tenant = (data.ms_tenant or "").strip() or "organizations"
+        if not TENANT_RE.match(tenant):
+            raise HTTPException(400, "Mandant: „organizations“, die Mandanten-ID oder die Domain (z. B. praxis.onmicrosoft.com)")
+        set_setting(conn, "ms_tenant", tenant)
     if changes.get("sync_interval") is not None:
         set_setting(conn, "sync_interval", str(data.sync_interval))
     if "public_url" in changes:

@@ -26,7 +26,11 @@ _guard = threading.Lock()
 
 
 def _signature(row) -> str:
-    raw = "|".join(str(row[k]) for k in ("imap_host", "imap_port", "imap_security", "imap_user", "secret"))
+    # Bei Microsoft 365 ändert sich das Geheimnis stündlich (neuer Token) – das ist kein Grund für einen Neustart
+    keys = ("imap_host", "imap_port", "imap_security", "imap_user", "auth_type")
+    if row["auth_type"] != "oauth_ms":
+        keys += ("secret",)
+    raw = "|".join(str(row[k]) for k in keys)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

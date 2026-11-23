@@ -52,6 +52,13 @@ Unterstützt wird jeweils die neueste Version unter [Releases](https://github.co
   geprüft (höchstens 100), Anhänge zusammen höchstens 25 MB. Bcc steht nicht in der verschickten Mail.
 - **Verbindungen zu Mailservern** nur mit SSL/TLS oder STARTTLS, Zertifikat und Servername werden geprüft. Nur beim
   Postausgang gibt es „keine Verschlüsselung“ für Relays im eigenen Netz.
+- **Microsoft 365 (OAuth2):** Anmeldung per Gerätecode direkt bei Microsoft – Postfach sieht das Microsoft-Passwort
+  nie. Erneuerungs- und Zugriffstoken werden wie Passwörter verschlüsselt gespeichert, nie an den Browser gegeben und
+  nicht gesichert. Laufende Anmeldungen gehören dem Benutzer, der sie gestartet hat (zufällige Kennung, nach spätestens
+  einer Stunde verworfen). Beim „Neu verbinden“ muss es dasselbe Microsoft-Konto sein. Die App-Registrierung ist ein
+  öffentlicher Client ohne Geheimnis; Berechtigungen nur `IMAP.AccessAsUser.All`, `SMTP.Send` (delegiert),
+  `offline_access`, `openid`, `email`. Widerrufen lässt sich der Zugriff jederzeit in Entra ID bzw. unter
+  myaccount.microsoft.com.
 - **Regeln** gehören einem Benutzer und gelten nur für seine Konten; niemand sonst (auch kein Admin) sieht sie.
   Weiterleiten nur an gültige fremde Adressen (nicht an die eigene), weitergeleitete Mails tragen `Auto-Submitted:
   auto-forwarded` und eine eigene Kennung; automatische Mails, Rückläufer und schon weitergeleitete Mails werden nie

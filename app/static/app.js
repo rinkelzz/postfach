@@ -224,6 +224,7 @@ function fillSettings() {
   $("setDsmLogin").checked = s.dsm_login; $("setDsmCreate").checked = s.dsm_auto_create; $("setDsmAdmins").checked = s.dsm_admins;
   $("setDsmUrl").value = s.dsm_url || "";
   $("setInterval").value = s.sync_interval; $("setUsersAdd").checked = s.users_add_accounts;
+  $("setMsClient").value = s.ms_client_id || ""; $("setMsTenant").value = s.ms_tenant === "organizations" ? "" : (s.ms_tenant || "");
   $("portVal").value = s.port;
   applyBranding(state.branding);
 }
@@ -239,7 +240,8 @@ async function saveSettings() {
       theme_default: $("setTheme").value, public_url: $("setUrl").value.trim(),
       dsm_login: $("setDsmLogin").checked, dsm_auto_create: $("setDsmCreate").checked, dsm_admins: $("setDsmAdmins").checked,
       dsm_url: $("setDsmUrl").value.trim() || null, sync_interval: Number($("setInterval").value || 5),
-      users_add_accounts: $("setUsersAdd").checked } });
+      users_add_accounts: $("setUsersAdd").checked, ms_client_id: $("setMsClient").value.trim(),
+      ms_tenant: $("setMsTenant").value.trim() || "organizations" } });
     state.me = await api("me");
     if (window.pfTheme) pfTheme(state.me.theme_effective);
     applyMode(); fillSettings();

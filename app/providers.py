@@ -33,8 +33,9 @@ _P = {
                 "hint": ""},
     "microsoft": {"label": "Microsoft (Outlook.com / Hotmail)", "imap": ("outlook.office365.com", 993, "ssl"),
                   "smtp": ("smtp.office365.com", 587, "starttls"),
-                  "hint": "Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr. Die Anmeldung über "
-                          "Microsoft (OAuth2) kommt in einer späteren Version von Postfach."},
+                  "hint": "Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr – bitte oben "
+                          "„Mit Microsoft 365 verbinden“ nutzen (bei privaten Outlook.com-Konten geht das nur, wenn die "
+                          "App-Registrierung auch private Microsoft-Konten zulässt)."},
 }
 
 DOMAINS = {

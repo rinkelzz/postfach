@@ -6,13 +6,14 @@ Rechte:
   Die Nachrichten-Schnittstelle (messages.py) prüft immer, dass das Konto der angemeldeten Person gehört.
 """
 import re
+import time
 import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from .. import compose, crypto, idle, imapclient, providers, sync
+from .. import compose, crypto, idle, imapclient, oauth, providers, sync
 from ..db import audit, get_db, get_setting
 from ..mailer import valid_email
 from ..security import current_user
@@ -87,7 +88,7 @@ def account_out(row: sqlite3.Row, conn: sqlite3.Connection) -> dict:
         "imap_host": row["imap_host"], "imap_port": row["imap_port"], "imap_security": row["imap_security"],
         "imap_user": row["imap_user"], "smtp_host": row["smtp_host"], "smtp_port": row["smtp_port"],
         "smtp_security": row["smtp_security"], "smtp_user": row["smtp_user"],
-        "password_set": bool(row["secret"]), "signature": row["signature"], "sync_days": row["sync_days"],
+        "password_set": bool(row["secret"]), "auth_type": row["auth_type"], "signature": row["signature"], "sync_days": row["sync_days"],
         "color": row["color"], "active": bool(row["active"]), "sort": row["sort"],
         "last_sync": local_iso(row["last_sync"]), "last_error": row["last_error"],
         "syncing": sync.is_running(row["id"]),
@@ -184,6 +185,8 @@ def update_account(account_id: int, data: AccountBase, user=Depends(current_user
         fields["owner_id"] = _owner_for(conn, user, data.owner_id)
         if fields["owner_id"] == user["id"] and not user["is_admin"]:
             raise HTTPException(403, "Nicht erlaubt")
+    if (data.imap_password or data.smtp_password) and row["auth_type"] == "oauth_ms":
+        raise HTTPException(400, "Dieses Konto meldet sich über Microsoft an – zum Erneuern „Neu verbinden“ nutzen")
     if data.imap_password or data.smtp_password:
         old = crypto.unpack_secrets(row["secret"]) if row["secret"] else {"imap": "", "smtp": ""}
         imap_pw = data.imap_password or old["imap"]
@@ -224,6 +227,8 @@ def test_account(data: AccountTest, user=Depends(current_user), conn: sqlite3.Co
     """Anmeldung an Posteingang (IMAP) und Postausgang (SMTP) prüfen – ohne etwas zu speichern."""
     _may_add(conn, user)  # verbindet sich mit beliebigen Servern → nur wer Konten einrichten darf
     base = dict(get_account(conn, user, data.account_id, manage=True)) if data.account_id else {}
+    if base.get("auth_type") == "oauth_ms":
+        return _test_oauth(conn, base)
     old = crypto.unpack_secrets(base["secret"]) if base.get("secret") else {"imap": "", "smtp": ""}
     vals = {**base, **{k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}}
     vals.setdefault("imap_port", 993)
@@ -269,3 +274,102 @@ def sync_all(user=Depends(current_user), conn: sqlite3.Connection = Depends(get_
     """Alle eigenen Konten jetzt abrufen."""
     ids = [r[0] for r in conn.execute("SELECT id FROM accounts WHERE owner_id = ? AND active = 1", (user["id"],))]
     return {"started": [i for i in ids if sync.start_sync(i)]}
+
+
+def _test_oauth(conn, account: dict) -> dict:
+    result = {"imap_ok": False, "imap_error": None, "folders": 0, "smtp_ok": None, "smtp_error": None}
+    try:
+        token = oauth.access_token(conn, account)
+    except oauth.OAuthError as e:
+        result["imap_error"] = str(e)
+        return result
+    try:
+        with imapclient.Client(account["imap_host"], account["imap_port"], account["imap_security"], account["imap_user"],
+                               "", oauth_token=token) as c:
+            result["folders"] = len(c.list_folders())
+        result["imap_ok"] = True
+    except Exception as e:  # noqa: BLE001
+        result["imap_error"] = imapclient.friendly_error(e)
+    if account.get("smtp_host"):
+        try:
+            compose.smtp_send(account, None, [], oauth_token=token)
+            result["smtp_ok"] = True
+        except compose.SendError as e:
+            result["smtp_ok"] = False
+            result["smtp_error"] = str(e) + (" – in Exchange muss für das Postfach „Authentifiziertes SMTP“ "
+                                             "eingeschaltet sein" if "Anmeldung" in str(e) else "")
+    return result
+
+
+# --- Microsoft 365: verbinden mit Code ----------------------------------------
+
+class MsStartIn(BaseModel):
+    account_id: Optional[int] = Field(None, description="bestehendes Konto neu verbinden")
+    owner_id: Optional[int] = Field(None, description="nur Admins: neues Konto für diesen Benutzer")
+    name: Optional[str] = Field(None, max_length=60)
+    color: Optional[str] = Field(None, max_length=7)
+
+
+@router.post("/accounts/microsoft/start")
+def ms_start(data: MsStartIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Anmeldung bei Microsoft starten: liefert einen Code für microsoft.com/devicelogin."""
+    if data.account_id:
+        row = get_account(conn, user, data.account_id, manage=True)
+        if row["auth_type"] != "oauth_ms":
+            raise HTTPException(400, "Dieses Konto meldet sich mit Passwort an")
+        payload = {"account_id": row["id"]}
+    else:
+        _may_add(conn, user)
+        if data.color and not COLOR_RE.match(data.color):
+            raise HTTPException(422, "Farbe als #rrggbb")
+        payload = {"owner_id": _owner_for(conn, user, data.owner_id), "name": (data.name or "").strip(),
+                   "color": data.color or "#0078d4"}
+    try:
+        return oauth.start_flow(conn, user["id"], payload)
+    except oauth.OAuthError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/accounts/microsoft/{flow_id}")
+def ms_status(flow_id: str, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Stand der Anmeldung. Ist sie fertig, wird das Konto angelegt bzw. aktualisiert."""
+    flow = oauth.get_flow(flow_id, user["id"])
+    if not flow:
+        raise HTTPException(404, "Anmeldung nicht gefunden oder abgelaufen")
+    if flow["status"] == "pending":
+        return {"status": "pending", "expires_in": max(0, int(flow["expires"] - time.time()))}
+    if flow["status"] == "error":
+        oauth.finish_flow(flow_id)
+        return {"status": "error", "error": flow["error"]}
+    if flow.get("account_id_done"):
+        return {"status": "ok", "account": account_out(conn.execute("SELECT * FROM accounts WHERE id = ?",
+                                                                    (flow["account_id_done"],)).fetchone(), conn)}
+    email = flow["email"]
+    if not valid_email(email):
+        oauth.finish_flow(flow_id)
+        return {"status": "error", "error": "Microsoft hat keine E-Mail-Adresse geliefert – Konto bitte mit Passwort einrichten."}
+    secret = oauth.pack(flow["tokens"])
+    p = flow["payload"]
+    if p.get("account_id"):
+        row = get_account(conn, user, p["account_id"], manage=True)
+        if row["email"].lower() != email.lower():
+            oauth.finish_flow(flow_id)
+            return {"status": "error", "error": f"Angemeldet wurde {email}, das Konto gehört aber zu {row['email']}."}
+        conn.execute("UPDATE accounts SET secret = ?, last_error = NULL WHERE id = ?", (secret, row["id"]))
+        audit(conn, user["id"], "account_password", f"user:{row['owner_id']}", f"{email} (Microsoft neu verbunden)")
+        acc_id = row["id"]
+        idle.kick(acc_id)
+    else:
+        sort = conn.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM accounts WHERE owner_id = ?", (p["owner_id"],)).fetchone()[0]
+        acc_id = conn.execute(
+            "INSERT INTO accounts(owner_id, name, email, from_name, imap_host, imap_port, imap_security, imap_user, smtp_host, "
+            "smtp_port, smtp_security, smtp_user, secret, auth_type, color, sort, created_by, created_at) "
+            "VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'oauth_ms', ?, ?, ?, ?)",
+            (p["owner_id"], p.get("name") or email.split("@")[1], email, *oauth.IMAP, email, *oauth.SMTP, email, secret,
+             p.get("color") or "#0078d4", sort, user["id"], now_utc_str())).lastrowid
+        audit(conn, user["id"], "account_created", f"user:{p['owner_id']}", f"{email} (Microsoft 365)")
+        idle.kick()
+    flow["account_id_done"] = acc_id
+    flow["tokens"] = None  # nicht länger als nötig im Speicher
+    sync.start_sync(acc_id)
+    return {"status": "ok", "account": account_out(conn.execute("SELECT * FROM accounts WHERE id = ?", (acc_id,)).fetchone(), conn)}

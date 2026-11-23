@@ -10,9 +10,9 @@ Ein E-Mail-Programm für IMAP-Konten – als Paket auf der eigenen Synology NAS,
 Mehrere Benutzer, jeder mit seinen eigenen Mailkonten, alle Posteingänge in einer Liste. Wer in DSM angemeldet ist,
 ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen Zwischenspeicher für schnelles Suchen.
 
-> **Stand:** Version 0.3 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
-> Löschen/Papierkorb, Verschieben, automatisch gespeicherte Entwürfe und **Regeln** (verschieben, weiterleiten,
-> Papierkorb). Als Nächstes: Gmail/Microsoft 365 – siehe [Fahrplan](#fahrplan).
+> **Stand:** Version 0.4 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
+> Löschen/Papierkorb, Verschieben, automatisch gespeicherte Entwürfe, Regeln und **Microsoft 365** (Anmeldung
+> mit Code, OAuth2) – siehe [Fahrplan](#fahrplan).
 
 ![Posteingang](docs/screenshots/posteingang.png)
 
@@ -86,8 +86,30 @@ Besonderheiten einiger Anbieter:
 - **Gmail, Yahoo, iCloud:** ein **App-Passwort** anlegen, das normale Passwort funktioniert nicht.
 - **GMX und WEB.DE:** den Abruf per IMAP einmalig im Webmailer erlauben (Einstellungen → POP3/IMAP Abruf).
 - **Telekom:** ein eigenes E-Mail-Passwort im Kundencenter anlegen.
-- **Microsoft 365 / Outlook.com:** Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr. Die
-  Anmeldung über Microsoft (OAuth2) kommt in einer späteren Version.
+- **Microsoft 365:** Microsoft erlaubt die Anmeldung mit Passwort per IMAP meist nicht mehr – dafür gibt es
+  **Mit Microsoft 365 verbinden** (siehe unten).
+
+### Microsoft 365
+
+Einmalig richtet der Admin eine App-Registrierung in Entra ID ein (Anleitung direkt in der App unter
+**Verwaltung → Einstellungen → Microsoft 365**, ca. 5 Minuten):
+
+1. [entra.microsoft.com](https://entra.microsoft.com) → **App-Registrierungen → Neue Registrierung** (z. B. „Postfach“,
+   nur Konten dieser Organisation, ohne Umleitungs-URI).
+2. **Authentifizierung → Öffentliche Clientflows zulassen: Ja.**
+3. **API-Berechtigungen:** Office 365 Exchange Online → delegiert `IMAP.AccessAsUser.All` und `SMTP.Send`, dazu
+   Microsoft Graph → `offline_access`, `openid`, `email`. **Administratorzustimmung erteilen.**
+4. **Anwendungs-ID (Client-ID)** und **Verzeichnis-ID** (oder Domain) in Postfach eintragen.
+5. Zum Senden im Exchange Admin Center beim Postfach **Authentifiziertes SMTP** einschalten.
+
+Danach wählt der Benutzer unter **Konten → Mit Microsoft 365 verbinden**, öffnet microsoft.com/devicelogin (auf jedem
+Gerät), gibt den angezeigten Code ein und meldet sich an. Postfach braucht dafür keine https-Adresse und kein
+Client-Geheimnis. Die Tokens werden verschlüsselt gespeichert und automatisch erneuert.
+
+![Mit Microsoft 365 verbinden](docs/screenshots/microsoft365.png)
+
+**Gmail** bleibt beim App-Passwort: Google lässt Apps mit Mailzugriff ohne kostenpflichtige Prüfung nur im Testmodus
+laufen, dort müsste man sich alle 7 Tage neu anmelden.
 
 ## Regeln
 
@@ -131,8 +153,8 @@ Mehr in [SECURITY.md](SECURITY.md).
 |---|---|
 | 0.1 | Lesen + Senden: Konten, Abruf, Ordner, gemeinsamer Posteingang, Suche, Anhänge, Antworten/Weiterleiten, Rechte für Admins |
 | 0.2 | Neue Mails sofort (IMAP IDLE), Browser-Benachrichtigung, Löschen/Papierkorb, Verschieben, Entwürfe |
-| **0.3** | **Regeln: verschieben, weiterleiten, Papierkorb – für neue Mails, „Jetzt anwenden“ für vorhandene** |
-| 0.4 | Gmail und Microsoft 365 per OAuth2 |
+| 0.3 | Regeln: verschieben, weiterleiten, Papierkorb – für neue Mails, „Jetzt anwenden“ für vorhandene |
+| **0.4** | **Microsoft 365 per OAuth2 (Anmeldung mit Code)** – Gmail bleibt beim App-Passwort |
 
 ## Installation auf der Synology
 
@@ -244,4 +266,4 @@ its own DSM window with single sign-on for DSM users. The user interface is Germ
   updates through Package Center, four themes, audit log, configurable port.
 - New mail arrives instantly via IMAP IDLE with browser notifications; delete to trash, move, auto-saved drafts.
 - Server-side rules for new inbox mail (move, forward, trash) with mail-loop protection.
-- Roadmap: Gmail/Microsoft 365 via OAuth2.
+- Microsoft 365 via OAuth2 device-code sign-in (XOAUTH2 for IMAP and SMTP), using the customer's own Entra app registration.

@@ -121,7 +121,7 @@ def friendly_error(e: BaseException) -> str:
 class Client:
     """Eine angemeldete IMAP-Verbindung. Als Kontextmanager benutzen (meldet sich am Ende ab)."""
 
-    def __init__(self, host: str, port: int, security: str, user: str, password: str):
+    def __init__(self, host: str, port: int, security: str, user: str, password: str, oauth_token: Optional[str] = None):
         ctx = ssl.create_default_context()
         try:
             if security == "ssl":
@@ -131,8 +131,16 @@ class Client:
                 if security == "starttls":
                     self.conn.starttls(ssl_context=ctx)
             self.conn.sock.settimeout(TIMEOUT)
-            self.conn.login(user, password)
+            if oauth_token:  # Microsoft 365: SASL XOAUTH2 statt Passwort
+                xo = f"user={user}\x01auth=Bearer {oauth_token}\x01\x01".encode()
+                # Lehnt der Server ab, schickt er eine Fehlerbeschreibung als weitere Rückfrage – darauf leer antworten
+                self.conn.authenticate("XOAUTH2", lambda challenge: b"" if challenge else xo)
+            else:
+                self.conn.login(user, password)
         except imaplib.IMAP4.error as e:
+            if oauth_token:
+                raise ImapError("Microsoft hat die Anmeldung am Postfach abgelehnt – ist IMAP für das Postfach erlaubt und "
+                                "die Berechtigung IMAP.AccessAsUser.All in der App-Registrierung bestätigt? Sonst „Neu verbinden“.")
             if "LOGINDISABLED" in str(e) or "not supported" in str(e).lower():
                 raise ImapError("Der Server erlaubt keine Anmeldung ohne Verschlüsselung – STARTTLS oder SSL wählen")
             raise

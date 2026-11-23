@@ -49,6 +49,17 @@ def is_running(account_id: int) -> bool:
 
 def open_client(account: sqlite3.Row, password: Optional[str] = None) -> imapclient.Client:
     """Angemeldete IMAP-Verbindung für ein Konto (in Tests ersetzbar)."""
+    if account["auth_type"] == "oauth_ms":
+        from . import oauth
+        conn = connect()
+        try:
+            token = oauth.access_token(conn, account)
+        except oauth.OAuthError as e:
+            raise SyncError(str(e))
+        finally:
+            conn.close()
+        return imapclient.Client(account["imap_host"], account["imap_port"], account["imap_security"],
+                                 account["imap_user"], "", oauth_token=token)
     if password is None:
         password = crypto.unpack_secrets(account["secret"])["imap"]
     if not password:

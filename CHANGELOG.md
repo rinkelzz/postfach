@@ -2,6 +2,24 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.4.0] – 2026-11-23
+
+### Neu: Microsoft 365
+- **Mit Microsoft 365 verbinden** (unter **Konten**): Postfach zeigt einen Code, man meldet sich auf
+  microsoft.com/devicelogin an (auf jedem Gerät, auch am Handy) – fertig. Braucht keine https-Adresse und keine
+  Weiterleitung zur NAS. Abruf (inkl. IDLE) und Versand laufen per OAuth2 (XOAUTH2) statt mit Passwort.
+- Einrichtung durch den Admin unter **Verwaltung → Einstellungen → Microsoft 365**: Client-ID und Mandant der eigenen
+  App-Registrierung in Entra ID – mit Schritt-für-Schritt-Anleitung. Ein Client-Geheimnis ist nicht nötig.
+- Admins können Microsoft-Konten auch für ihre Benutzer verbinden (**Verwaltung → Mailkonten**).
+- Tokens werden wie Passwörter verschlüsselt gespeichert, nie an den Browser gegeben und nicht gesichert; der
+  Zugriffstoken wird automatisch erneuert. Ist die Anmeldung abgelaufen oder widerrufen, steht am Konto
+  „Neu verbinden“ – dabei muss es dasselbe Microsoft-Konto sein.
+- Verständliche Fehlermeldungen für die typischen Stolpersteine (öffentliche Clientflows aus, Zustimmung fehlt,
+  „Authentifiziertes SMTP“ beim Postfach aus).
+
+Gmail bleibt bewusst beim **App-Passwort**: Google lässt Apps mit Mailzugriff ohne kostenpflichtige Prüfung nur im
+Testmodus laufen, und dort müsste man sich alle 7 Tage neu anmelden.
+
 ## [0.3.1] – 2026-11-23
 
 ### Behoben
@@ -85,6 +103,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.4.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.4.0
 [0.3.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.1
 [0.3.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.2.0

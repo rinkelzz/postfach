@@ -221,3 +221,14 @@ def test_real_server_rules(tmp_path):
         assert where["Neues Angebot Server"] == "Geschäftlich" and where["Gewinn"] == "trash"
         assert where["Normal"] == "inbox" and where["Rechnung"] == "inbox"   # vorhandene Mails bleiben
     crypto._cache.clear()
+
+
+@pytest.mark.skipif(not os.environ.get("PF_TEST_XOAUTH2_TOKEN"), reason="PF_TEST_XOAUTH2_TOKEN nicht gesetzt")
+def test_real_server_xoauth2():
+    """Anmeldung per XOAUTH2 wie bei Microsoft 365 (Testserver muss den Token kennen, z. B. Dovecot mit oauth2-passdb)."""
+    host, port, sec, user, _pw = _cfg()
+    with imapclient.Client(host, port, sec, user, "", oauth_token=os.environ["PF_TEST_XOAUTH2_TOKEN"]) as c:
+        assert any(f["path"] == "INBOX" for f in c.list_folders())
+    with pytest.raises(imapclient.ImapError) as e:
+        imapclient.Client(host, port, sec, user, "", oauth_token="falscher-token")
+    assert "Microsoft hat die Anmeldung" in str(e.value)

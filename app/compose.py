@@ -89,8 +89,27 @@ def build(account: sqlite3.Row, to: str, cc: str, bcc: str, subject: str, body: 
     return msg, rcpts
 
 
-def smtp_send(account: sqlite3.Row, msg: EmailMessage, rcpts: List[str], password: Optional[str] = None) -> None:
-    if password is None:
+def is_oauth(account) -> bool:
+    try:
+        return account["auth_type"] == "oauth_ms"
+    except (KeyError, IndexError):
+        return False
+
+
+def smtp_send(account: sqlite3.Row, msg: EmailMessage, rcpts: List[str], password: Optional[str] = None,
+              oauth_token: Optional[str] = None) -> None:
+    if is_oauth(account):
+        if oauth_token is None:
+            from . import oauth
+            from .db import connect
+            conn = connect()
+            try:
+                oauth_token = oauth.access_token(conn, account)
+            except oauth.OAuthError as e:
+                raise SendError(str(e))
+            finally:
+                conn.close()
+    elif password is None:
         password = crypto.unpack_secrets(account["secret"])["smtp"]
     host = account["smtp_host"].strip()
     if not host:
@@ -107,17 +126,30 @@ def smtp_send(account: sqlite3.Row, msg: EmailMessage, rcpts: List[str], passwor
             if account["smtp_security"] == "starttls":
                 server.starttls(context=ctx)
                 server.ehlo()
+            if oauth_token:  # Microsoft 365: SASL XOAUTH2
+                xo = f"user={user}\x01auth=Bearer {oauth_token}\x01\x01"
+                server.auth("XOAUTH2", lambda challenge=None: xo if challenge is None else "")
             # Ohne Verschlüsselung (Relay im LAN) bietet der Server oft gar keine Anmeldung an – dann ohne
-            if user and password and (account["smtp_security"] != "none" or server.has_extn("auth")):
+            elif user and password and (account["smtp_security"] != "none" or server.has_extn("auth")):
                 server.login(user, password)
             if msg is not None:
                 server.send_message(msg, from_addr=account["email"], to_addrs=rcpts)
     except smtplib.SMTPAuthenticationError:
+        if oauth_token:
+            raise SendError("Microsoft hat die Anmeldung zum Senden abgelehnt – in Exchange muss für das Postfach "
+                            "„Authentifiziertes SMTP“ eingeschaltet und SMTP.Send in der App-Registrierung bestätigt sein")
         raise SendError("Anmeldung am Postausgangsserver fehlgeschlagen – Benutzer und Passwort prüfen")
     except smtplib.SMTPRecipientsRefused as e:
         raise SendError("Empfänger abgelehnt: " + ", ".join(list(e.recipients)[:3]))
     except smtplib.SMTPSenderRefused:
         raise SendError("Der Server nimmt die Absenderadresse nicht an – stimmt die Mailadresse des Kontos?")
+    except smtplib.SMTPResponseException as e:
+        if e.smtp_code in (530, 534, 535):  # ältere Python-Versionen melden abgelehnte Anmeldung so
+            if oauth_token:
+                raise SendError("Microsoft hat die Anmeldung zum Senden abgelehnt – in Exchange muss für das Postfach "
+                                "„Authentifiziertes SMTP“ eingeschaltet und SMTP.Send in der App-Registrierung bestätigt sein")
+            raise SendError("Anmeldung am Postausgangsserver fehlgeschlagen – Benutzer und Passwort prüfen")
+        raise SendError(f"Versand fehlgeschlagen: {e}")
     except smtplib.SMTPNotSupportedError:
         raise SendError("Der Server unterstützt die gewählte Verschlüsselung nicht – Port und Verschlüsselung prüfen")
     except (smtplib.SMTPException, OSError, socket.timeout) as e:

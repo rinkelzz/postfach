@@ -177,11 +177,19 @@ CREATE INDEX IF NOT EXISTS idx_rules_owner ON rules(owner_id, position)
         conn.execute("ALTER TABLE messages ADD COLUMN rules_done INTEGER NOT NULL DEFAULT 1")
 
 
+def _m4_oauth(conn: sqlite3.Connection) -> None:
+    """Version 0.4: Anmeldung per OAuth2 (Microsoft 365) statt Passwort."""
+    if "auth_type" not in _columns(conn, "accounts"):
+        # password | oauth_ms – bei oauth_ms stehen in secret die (verschlüsselten) Tokens statt Passwörter
+        conn.execute("ALTER TABLE accounts ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'password'")
+
+
 # Version → Schritt. Nur anhängen, nie ändern!
 MIGRATIONS: Dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _m1_basis,
     2: _m2_mail,
     3: _m3_regeln,
+    4: _m4_oauth,
 }
 SCHEMA_VERSION = max(MIGRATIONS)
 
@@ -198,6 +206,9 @@ DEFAULT_SETTINGS = {
     # Abruf
     "sync_interval": "5",    # Minuten zwischen zwei Abrufen aller Konten
     "users_add_accounts": "1",  # Benutzer dürfen selbst Konten anlegen (sonst nur der Admin)
+    # Microsoft 365 (OAuth2, Anmeldung mit Code): App-Registrierung des Kunden in Entra ID
+    "ms_client_id": "",
+    "ms_tenant": "organizations",  # organizations = jedes Geschäftskonto; sonst Mandanten-ID oder Domain
     # Datensicherung: jede Nacht, lokal + optional in einen freigegebenen Ordner
     "backup_enabled": "1",
     "backup_hour": "2",

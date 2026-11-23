@@ -87,7 +87,10 @@
   <!-- KONTEN -->
   <div data-page="accounts" class="page hidden">
     <section class="card">
-      <div class="toolbar"><h2>Meine Mailkonten</h2><button class="primary" id="accNew">＋ Konto hinzufügen</button></div>
+      <div class="toolbar"><h2>Meine Mailkonten</h2><div class="row">
+        <button id="accMs" class="hidden" title="Microsoft 365 / Exchange Online">🟦 Mit Microsoft 365 verbinden</button>
+        <button class="primary" id="accNew">＋ Konto hinzufügen</button></div></div>
+      <div class="mscode hidden" id="msBox"></div>
       <div class="acclist" id="accList"></div>
       <p class="muted small hidden" id="accNoAdd"></p>
       <div class="err" id="accErr"></div>
@@ -139,7 +142,10 @@
     </section>
 
     <section class="card asec" data-asec="konten">
-      <div class="toolbar"><h2>Mailkonten aller Benutzer</h2><button class="primary" id="aaNew">＋ Konto für Benutzer einrichten</button></div>
+      <div class="toolbar"><h2>Mailkonten aller Benutzer</h2><div class="row">
+        <button id="aaMs" class="hidden">🟦 Microsoft 365 für Benutzer verbinden</button>
+        <button class="primary" id="aaNew">＋ Konto für Benutzer einrichten</button></div></div>
+      <div class="mscode hidden" id="aaMsBox"></div>
       <p class="muted small" style="margin-top:-6px">Hier richtest du Konten für deine Benutzer ein, änderst Server oder Passwort und siehst Abruffehler.
         Die Mails selbst sieht nur der jeweilige Benutzer.</p>
       <div class="acclist" id="aaList"></div>
@@ -167,6 +173,25 @@
           <label>Alle Konten abrufen alle … Minuten <input id="setInterval" type="number" min="1" max="60" class="w80"></label>
           <label class="inline"><input type="checkbox" id="setUsersAdd"> Benutzer dürfen selbst Mailkonten hinzufügen</label>
           <p class="muted small">Aus: Nur Admins richten Konten ein (unter „Mailkonten“) – die Benutzer lesen und schreiben nur.</p>
+        </fieldset>
+        <fieldset><legend>Microsoft 365 (Anmeldung mit Code)</legend>
+          <label>Client-ID der App-Registrierung <input id="setMsClient" maxlength="60" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off"></label>
+          <label>Mandant <input id="setMsTenant" maxlength="100" placeholder="organizations"></label>
+          <details class="small"><summary>App in Entra ID registrieren (einmalig, ca. 5 Minuten)</summary>
+            <ol style="padding-left:20px;margin:6px 0">
+              <li><a href="https://entra.microsoft.com" target="_blank" rel="noopener">entra.microsoft.com</a> → <b>Anwendungen → App-Registrierungen →
+                Neue Registrierung</b>. Name z. B. „Postfach“, Kontotyp „Nur Konten in diesem Organisationsverzeichnis“, ohne Umleitungs-URI.</li>
+              <li><b>Authentifizierung</b> → ganz unten <b>Öffentliche Clientflows zulassen: Ja</b> → Speichern.</li>
+              <li><b>API-Berechtigungen → Berechtigung hinzufügen → Von meiner Organisation verwendete APIs</b> →
+                „Office 365 Exchange Online“ → <b>Delegierte Berechtigungen</b>: <code>IMAP.AccessAsUser.All</code> und <code>SMTP.Send</code>.
+                Dazu bei „Microsoft Graph“ (delegiert): <code>offline_access</code>, <code>openid</code>, <code>email</code>.</li>
+              <li><b>Administratorzustimmung erteilen</b> für die Organisation.</li>
+              <li>Unter <b>Übersicht</b> die <b>Anwendungs-ID (Client-ID)</b> hier eintragen, als Mandant die <b>Verzeichnis-ID</b>
+                (oder die Domain, z. B. <code>praxis.onmicrosoft.com</code>).</li>
+              <li>Zum Senden im Exchange Admin Center beim Postfach <b>E-Mail-Apps → Authentifiziertes SMTP</b> einschalten.</li>
+            </ol>
+            Ein Geheimnis (Client Secret) wird nicht gebraucht. Danach können Benutzer unter <b>Konten</b> „Mit Microsoft 365 verbinden“ wählen.
+          </details>
         </fieldset>
         <fieldset><legend>Anmeldung mit DSM-Konten</legend>
           <label class="inline"><input type="checkbox" id="setDsmLogin"> Login mit DSM-Benutzer und -Passwort erlauben</label>
