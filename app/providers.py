@@ -16,7 +16,10 @@ _P = {
               "links": [["Bestätigung in zwei Schritten", "https://myaccount.google.com/signinoptions/twosv"],
                         ["App-Passwörter", "https://myaccount.google.com/apppasswords"],
                         ["Hilfe von Google", "https://support.google.com/accounts/answer/185833?hl=de"]],
-              "note": "Bei Google-Workspace-Konten (Firmen) kann der Administrator App-Passwörter sperren."},
+              "note": "Zeigt Google „Die gesuchte Einstellung ist für Ihr Konto nicht verfügbar“: Dann ist die Bestätigung in "
+                      "zwei Schritten aus oder nur mit Passkeys/Sicherheitsschlüsseln eingerichtet – zusätzlich eine "
+                      "Authenticator-App oder die Telefonnummer als zweiten Schritt hinzufügen. Bei Firmenkonten (Google "
+                      "Workspace) und mit „Erweiterter Sicherheit“ gibt es keine App-Passwörter."},
     "gmx": {"label": "GMX", "imap": ("imap.gmx.net", 993, "ssl"), "smtp": ("mail.gmx.net", 587, "starttls"),
             "hint": "Bei GMX muss der Abruf per IMAP einmalig im Webmailer erlaubt werden "
                     "(Einstellungen → POP3/IMAP Abruf)."},

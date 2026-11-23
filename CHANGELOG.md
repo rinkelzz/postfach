@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.1] – 2026-11-23
+
+### Verbessert
+- Gmail-Anleitung: erklärt, was zu tun ist, wenn Google bei den App-Passwörtern „Die gesuchte Einstellung ist für Ihr
+  Konto nicht verfügbar“ meldet (zweiter Schritt nur mit Passkey/Sicherheitsschlüssel, Firmenkonto, Erweiterte Sicherheit).
+
 ## [0.5.0] – 2026-11-23
 
 ### Neu
@@ -118,6 +124,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.5.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.1
 [0.5.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.0
 [0.4.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.4.0
 [0.3.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.3.1

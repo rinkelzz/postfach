@@ -95,7 +95,10 @@ Besonderheiten einiger Anbieter:
   2. [App-Passwörter](https://myaccount.google.com/apppasswords) öffnen, Namen „Postfach“ eingeben, „Erstellen“.
   3. Das 16-stellige Passwort (ohne Leerzeichen) in Postfach als Passwort eintragen – Google zeigt es nur einmal an.
   4. Nach einer Änderung des Google-Passworts sind App-Passwörter ungültig – dann ein neues anlegen.
-     Bei Google-Workspace-Konten kann der Administrator App-Passwörter sperren.
+     Zeigt Google „Die gesuchte Einstellung ist für Ihr Konto nicht verfügbar“, ist die Bestätigung in zwei Schritten
+     aus oder nur mit Passkeys/Sicherheitsschlüsseln eingerichtet – dann zusätzlich eine Authenticator-App oder die
+     Telefonnummer als zweiten Schritt hinzufügen. Firmenkonten (Google Workspace) und Konten mit „Erweiterter
+     Sicherheit“ haben keine App-Passwörter.
      ([Hilfe von Google](https://support.google.com/accounts/answer/185833?hl=de))
 - **Yahoo, iCloud:** ebenfalls ein **App-Passwort** anlegen, das normale Passwort funktioniert nicht.
 - **GMX und WEB.DE:** den Abruf per IMAP einmalig im Webmailer erlauben (Einstellungen → POP3/IMAP Abruf).
