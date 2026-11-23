@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.1.1] – 2026-11-23
+
+### Behoben
+- **App startete nicht, wenn Port 8790 schon belegt war** (z. B. vom Foto-Globus). Neuer Standard-Port ist **8810**.
+- Ist der eingestellte Port beim Installieren oder Starten belegt, nimmt Postfach automatisch den nächsten freien
+  Port (ab 8810), trägt ihn in `config.env` ein und schreibt einen Hinweis ins Protokoll. Die aktuelle Adresse der
+  Paketquelle steht wie immer unter Verwaltung → System → Updates.
+
 ## [0.1.0] – 2026-11-23
 
 Erste Version: **Lesen und Senden**.
@@ -34,4 +42,5 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.1.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.0

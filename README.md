@@ -119,7 +119,7 @@ Voraussetzung: DSM 7. Ein Paket für alle Modelle – **Intel/AMD** und **ARM** 
 3. Im Assistenten:
    - ein Passwort für den Benutzer `admin` (mindestens 8 Zeichen),
    - optional den **Firmennamen**,
-   - den **Port** (Standard `8790` – nur ändern, wenn er schon belegt ist).
+   - den **Port** (Standard `8810` – nur ändern, wenn er schon belegt ist).
 4. „Postfach“ erscheint im DSM-Hauptmenü. Unter **Konten** das erste Mailkonto hinzufügen.
 
 Das Paket nutzt das Python der NAS (3.8 bis 3.13). Fehlt es, bricht die Installation mit einem Hinweis ab –
@@ -135,7 +135,7 @@ Einmalig einrichten:
 1. **Paket-Zentrum → Einstellungen → Allgemein → Vertrauensebene:** „Beliebiger Herausgeber“
    (das Paket ist nicht von Synology signiert).
 2. **Paket-Zentrum → Einstellungen → Paketquellen → Hinzufügen:** Name `Postfach`,
-   Ort `http://127.0.0.1:8790/spk` (bei geändertem Port entsprechend – die genaue Adresse steht in der App
+   Ort `http://127.0.0.1:8810/spk` (bei geändertem Port entsprechend – die genaue Adresse steht in der App
    unter **Verwaltung → System → Updates**).
 
 Die App prüft etwa alle 30 Minuten (oder per „Jetzt prüfen“), lädt eine neue SPK auf die NAS und bietet sie dort an.
@@ -164,7 +164,7 @@ Für Handy und Laptop unterwegs braucht die App eine eigene https-Adresse, z. B.
 1. DNS-Eintrag für die Subdomain auf die NAS zeigen lassen (z. B. CNAME auf die DDNS-Adresse).
 2. **Systemsteuerung → Sicherheit → Zertifikat**: Let's-Encrypt-Zertifikat für die Subdomain.
 3. **Systemsteuerung → Anmeldeportal → Erweitert → Reverse Proxy**: Quelle `HTTPS mail.meinedomain.de:443`,
-   Ziel `HTTP localhost:8790`.
+   Ziel `HTTP localhost:8810`.
 4. In der App unter **Verwaltung → Einstellungen → Öffentliche Adresse** genau diese Adresse eintragen.
 
 **Wichtig:** Den Port im Router **nicht** direkt freigeben – sonst laufen Passwörter und Mails unverschlüsselt durchs
@@ -182,7 +182,7 @@ die **Paketquelle** im Paket-Zentrum und das **Ziel im Reverse Proxy**.
 ```bash
 pip install -r requirements-dev.txt
 pytest -q                                   # alle Tests
-PF_DATA_DIR=./data python -m app.main       # startet auf http://localhost:8790
+PF_DATA_DIR=./data python -m app.main       # startet auf http://localhost:8810
 ```
 
 Beim ersten Start ohne `PF_ADMIN_PASSWORD` steht das Admin-Passwort in `data/ERSTES_ADMIN_PASSWORT.txt`.

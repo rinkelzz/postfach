@@ -3,10 +3,22 @@
 
 mkdir -p "${PKGVAR}"
 
-PORT="${wizard_port:-8790}"
-case "$PORT" in ''|*[!0-9]*) PORT=8790 ;; esac
+PORT="${wizard_port:-8810}"
+case "$PORT" in ''|*[!0-9]*) PORT=8810 ;; esac
 # Ports, die DSM selbst braucht, nicht zulassen
-case "$PORT" in 80|443|5000|5001|5005|5006|6690|9900|9901) PORT=8790 ;; esac
+case "$PORT" in 80|443|5000|5001|5005|5006|6690|9900|9901) PORT=8810 ;; esac
+
+set -- $(find_python)
+PY="$1"; TAG="$2"
+# Gewünschter Port schon belegt (z. B. von einer anderen App)? Dann den nächsten freien nehmen.
+if [ -n "$PY" ] && port_in_use "$PY" "$PORT"; then
+    START=8810; [ "$PORT" = 8810 ] && START=8811
+    NEW=$(free_port "$PY" "$START")
+    if [ -n "$NEW" ]; then
+        log "Port ${PORT} ist schon belegt – nehme Port ${NEW}"
+        PORT="$NEW"
+    fi
+fi
 
 if [ ! -f "${CONFIG}" ]; then
     {
@@ -20,8 +32,6 @@ if [ ! -f "${CONFIG}" ]; then
     } > "${CONFIG}"
 fi
 
-set -- $(find_python)
-PY="$1"; TAG="$2"
 if [ -n "$PY" ]; then
     # Admin-Passwort wird nur hier verwendet und nirgends gespeichert
     PF_DATA_DIR="${PKGVAR}" PF_ADMIN_PASSWORD="${wizard_admin_password:-}" \

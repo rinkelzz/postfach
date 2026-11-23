@@ -15,7 +15,20 @@ start_daemon() {
     fi
     [ -f "${CONFIG}" ] && . "${CONFIG}"
     export PF_DATA_DIR="${PKGVAR}"
-    export PF_PORT="${PF_PORT:-8790}"
+    PF_PORT="${PF_PORT:-8810}"
+    # Port belegt (z. B. von einer anderen App)? Dann den nächsten freien nehmen und merken.
+    if port_in_use "$PY" "$PF_PORT"; then
+        START=8810; [ "$PF_PORT" = 8810 ] && START=8811
+        NEW=$(free_port "$PY" "$START")
+        if [ -z "$NEW" ]; then
+            log "FEHLER: Port ${PF_PORT} ist belegt und kein freier Port gefunden"
+            return 1
+        fi
+        log "Port ${PF_PORT} ist schon belegt (andere App?) – weiche auf Port ${NEW} aus"
+        PF_PORT="$NEW"
+        set_config_port "$NEW"
+    fi
+    export PF_PORT
     export PF_HOST="${PF_HOST:-0.0.0.0}"
     export PF_PUBLIC_URL PF_ROOT_PATH PF_COOKIE_SECURE PF_TIMEZONE
     export PF_UI_DIR="${PKGDEST}/ui"

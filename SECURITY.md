@@ -59,7 +59,7 @@ Unterstützt wird jeweils die neueste Version unter [Releases](https://github.co
 ## Hinweise für den Betrieb
 
 - Die App nur per **HTTPS** (Reverse Proxy von DSM mit Zertifikat) nach außen freigeben, nie den Port
-  (Standard 8790) direkt. Bei Zugriff per `http://` aus dem Internet zeigt die App eine Warnung.
+  (Standard 8810) direkt. Bei Zugriff per `http://` aus dem Internet zeigt die App eine Warnung.
 - Updates kommen aus den GitHub-Releases dieses Repos. Sie sind nicht zusätzlich signiert – geschützt
   sind sie durch HTTPS und das (per Zwei-Faktor gesicherte) GitHub-Konto des Maintainers.
 - Der Schlüssel `secret.key` und die Datenbank liegen beide in `/var/packages/postfach/var/`, lesbar nur für den
