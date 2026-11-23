@@ -1,4 +1,4 @@
-"""Hintergrund-Aufgaben: Mail-Abruf aller Konten, nächtliche Datensicherung und Update-Prüfung.
+"""Hintergrund-Aufgaben: Mail-Abruf aller Konten, IDLE-Wächter, nächtliche Datensicherung und Update-Prüfung.
 
 Ein Thread, der jede Minute nachsieht, ob etwas fällig ist. Fehler werden protokolliert,
 stoppen aber nie die App.
@@ -18,6 +18,11 @@ def run_once() -> None:
         sync.run_due()  # startet je fälligem Konto einen Abruf im Hintergrund
     except Exception as e:  # noqa: BLE001
         print(f"[postfach] Mail-Abruf FEHLER: {e}", flush=True)
+    try:
+        from . import idle
+        idle.ensure()  # IDLE-Wächter: neue Mails im Posteingang sofort erkennen
+    except Exception as e:  # noqa: BLE001
+        print(f"[postfach] IDLE FEHLER: {e}", flush=True)
     try:
         from . import backup
         b = backup.run_due()
@@ -55,3 +60,8 @@ def start(interval: float = 60) -> None:
 
 def stop() -> None:
     _stop.set()
+    try:
+        from . import idle
+        idle.stop_all()
+    except Exception:  # noqa: BLE001
+        pass

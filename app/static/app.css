@@ -307,3 +307,4 @@ html.dark .remote { background: #422006; color: #fde68a; }
 @media (max-width: 720px) { #treeToggle { display: inline-block; } }
 input[type=color] { padding: 2px; width: 46px; height: 36px; cursor: pointer; }
 @media (max-width: 720px) { .mail.collapsed .mside { padding-bottom: 4px; } .mail.collapsed .mside .compose { margin-bottom: 0; } }
+.rhead .acts select.movesel { width: auto; max-width: 170px; padding: 6px 8px; }

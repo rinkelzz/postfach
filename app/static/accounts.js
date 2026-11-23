@@ -8,7 +8,9 @@ function accStatus(a) {
   if (a.syncing) return '<span class="st"><span class="spin">↻</span> wird abgerufen …</span>';
   if (a.last_error) return `<span class="st bad">⚠ ${esc(a.last_error)}</span>`;
   if (!a.password_set) return '<span class="st bad">⚠ Kein Passwort gespeichert – bitte neu eintragen</span>';
-  return `<span class="st">${a.last_sync ? "zuletzt abgerufen " + fmtDT(a.last_sync) : "noch nicht abgerufen"}</span>`;
+  const push = a.push === "wartet" ? " · ⚡ neue Mails kommen sofort (IDLE)"
+    : a.push === "kein IDLE" ? ` · der Server meldet neue Mails nicht selbst – Abruf alle ${(state.settings && state.settings.sync_interval) || 5} Minuten` : "";
+  return `<span class="st">${a.last_sync ? "zuletzt abgerufen " + fmtDT(a.last_sync) : "noch nicht abgerufen"}${push}</span>`;
 }
 
 function accRows(list, withOwner) {

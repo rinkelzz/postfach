@@ -156,9 +156,12 @@ async function openMessage(id, images) {
   const row = (k, v) => v ? `<span class="k">${k}</span><span class="v">${esc(v)}</span><span></span>` : "";
   $("reader").innerHTML = `<div class="rhead">
       <div class="acts"><button class="back" id="rBack">‹ Zurück</button>
-        <button id="rReply">↩ Antworten</button><button id="rAll">↩↩ Allen</button><button id="rFwd">↪ Weiterleiten</button>
+        ${m.is_draft ? '<button class="primary" id="rEdit">✏️ Weiter bearbeiten</button>' : `<button id="rReply">↩ Antworten</button>
+        <button id="rAll">↩↩ Allen</button><button id="rFwd">↪ Weiterleiten</button>`}
+        <button id="rDel" title="${m.delete_permanent ? "endgültig löschen" : "in den Papierkorb (Entf)"}">🗑${m.delete_permanent ? " Endgültig" : ""}</button>
+        <select id="rMove" title="in einen anderen Ordner verschieben" class="movesel"><option value="">📁 Verschieben …</option>${moveOptions(m)}</select>
         <button id="rStar" title="markieren">${m.flagged ? "★" : "☆"}</button>
-        <button id="rUnread" title="als ungelesen markieren">● Ungelesen</button></div>
+        <button id="rUnread" title="als ungelesen markieren">●</button></div>
       <h2>${esc(m.subject || "(kein Betreff)")}</h2>
       <div class="from"><span class="av" style="background:${esc((mail.accounts.find(a => a.id === m.account_id) || {}).color || "")}">${esc(initials(m.from_name || m.from_addr))}</span>
         <div><b>${esc(m.from_name || m.from_addr)}</b> <span class="muted small">${m.from_name ? "&lt;" + esc(m.from_addr) + "&gt;" : ""}</span><br>
@@ -186,15 +189,51 @@ async function openMessage(id, images) {
     body.innerHTML = `<pre>${textToHtml(m.text)}</pre>`;
   }
   $("rBack").onclick = readerEmpty;
-  $("rReply").onclick = () => openDraft(id, "reply");
-  $("rAll").onclick = () => openDraft(id, "replyall");
-  $("rFwd").onclick = () => openDraft(id, "forward");
+  if (m.is_draft) $("rEdit").onclick = () => openDraft(id, "edit");
+  else {
+    $("rReply").onclick = () => openDraft(id, "reply");
+    $("rAll").onclick = () => openDraft(id, "replyall");
+    $("rFwd").onclick = () => openDraft(id, "forward");
+  }
+  $("rDel").onclick = () => deleteMessage(id);
+  $("rMove").onchange = () => { const f = Number($("rMove").value); if (f) moveMessage(id, f); };
   $("rStar").onclick = () => setFlags(id, { flagged: !m.flagged });
   $("rUnread").onclick = async () => { await setFlags(id, { seen: false }); readerEmpty(); mail.current = null; renderList(); };
   if ($("rImages")) $("rImages").onclick = () => openMessage(id, true);
   $$("#reader [data-att]").forEach(b => b.onclick = () =>
     downloadFile(`api/v1/messages/${id}/attachments/${b.dataset.att}`, b.querySelector("span").textContent)
       .catch(e => alert(e.message)));
+}
+
+function moveOptions(m) {
+  const a = mail.accounts.find(x => x.id === m.account_id);
+  if (!a) return "";
+  return a.folders.filter(f => !m.folder || f.id !== m.folder.id)
+    .map(f => `<option value="${f.id}">${esc(f.role ? folderName(f) : f.name)}</option>`).join("");
+}
+
+// Nach Löschen/Verschieben: aus der Liste nehmen und die nächste Mail zeigen (wie in Outlook)
+function dropFromList(id) {
+  const idx = mail.items.findIndex(i => i.id === id);
+  if (idx >= 0) mail.items.splice(idx, 1);
+  const next = mail.items[idx] || mail.items[idx - 1];
+  renderList();
+  refreshFolders().catch(() => {});
+  const phone = window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
+  if (next && !phone) openMessage(next.id);   // am Handy zurück zur Liste
+  else { mail.current = null; readerEmpty(); }
+}
+
+async function deleteMessage(id) {
+  const m = mail.msg && mail.msg.id === id ? mail.msg : null;
+  if (m && m.delete_permanent && !confirm("Diese Mail endgültig löschen? Das lässt sich nicht rückgängig machen.")) return;
+  try { await api(`messages/${id}/delete`, { method: "POST" }); dropFromList(id); }
+  catch (e) { alert(e.message); }
+}
+
+async function moveMessage(id, folderId) {
+  try { await api(`messages/${id}/move`, { method: "POST", body: { folder_id: folderId } }); dropFromList(id); }
+  catch (e) { alert(e.message); if ($("rMove")) $("rMove").value = ""; }
 }
 
 async function setFlags(id, flags) {
@@ -218,15 +257,19 @@ function openCompose(d) {
   const defAcc = d.account_id || (mail.folderId !== null ? (mail.accounts.find(a => a.folders.some(f => f.id === mail.folderId)) || {}).id : null)
                  || accts[0].id;
   mail.compose = { reply_to_id: d.reply_to_id || null, forward_of: d.forward_of || null, in_reply_to: d.in_reply_to || "",
-                   references: d.references || "", files: [], fwd: (d.forward_attachments || []).map(a => ({ ...a, on: true })),
-                   sigFor: null };
+                   references: d.references || "", files: (d.files || []).slice(),
+                   fwd: (d.forward_attachments || []).map(a => ({ ...a, on: true })),
+                   sigFor: null, draftId: d.draft_message_id || "", dirty: false, saving: null, noDrafts: false };
   $("cFrom").innerHTML = accts.map(a => `<option value="${a.id}">${esc(a.name)} &lt;${esc(a.email)}&gt;</option>`).join("");
   $("cFrom").value = String(defAcc);
-  $("cTo").value = d.to || ""; $("cCc").value = d.cc || ""; $("cBcc").value = "";
+  $("cTo").value = d.to || ""; $("cCc").value = d.cc || ""; $("cBcc").value = d.bcc || "";
   $("cSubject").value = d.subject || "";
   $("cBody").value = d.body !== undefined ? d.body : "";
-  $("cTitle").textContent = d.forward_of ? "Weiterleiten" : d.reply_to_id ? "Antworten" : "Neue Mail";
-  $("cErr").textContent = "";
+  $("cTitle").textContent = d.draft_message_id ? "Entwurf" : d.forward_of ? "Weiterleiten" : d.reply_to_id ? "Antworten" : "Neue Mail";
+  $("cErr").textContent = ""; $("cDraftInfo").textContent = d.draft_message_id ? "aus den Entwürfen" : "";
+  $("cDiscard").classList.toggle("hidden", !d.draft_message_id);
+  clearInterval(mail.draftTimer);
+  mail.draftTimer = setInterval(() => { if (mail.compose && mail.compose.dirty) saveDraft().catch(() => {}); }, 30000);
   if (d.body === undefined) applySignature();
   renderCAtts();
   $("composeModal").classList.remove("hidden");
@@ -254,8 +297,8 @@ function renderCAtts() {
       <button data-fwd="${i}" title="${a.on ? "nicht mitschicken" : "wieder mitschicken"}">${a.on ? "✕" : "↺"}</button></span>`).join("") +
     c.files.map((f, i) => `<span class="chip">📎 ${esc(f.name)} <small class="muted">${fmtBytes(f.size)}</small>
       <button data-file="${i}" title="entfernen">✕</button></span>`).join("");
-  $$("#cAtts [data-fwd]").forEach(b => b.onclick = () => { const a = c.fwd[Number(b.dataset.fwd)]; a.on = !a.on; renderCAtts(); });
-  $$("#cAtts [data-file]").forEach(b => b.onclick = () => { c.files.splice(Number(b.dataset.file), 1); renderCAtts(); });
+  $$("#cAtts [data-fwd]").forEach(b => b.onclick = () => { const a = c.fwd[Number(b.dataset.fwd)]; a.on = !a.on; markDirty(); renderCAtts(); });
+  $$("#cAtts [data-file]").forEach(b => b.onclick = () => { c.files.splice(Number(b.dataset.file), 1); markDirty(); renderCAtts(); });
 }
 
 $("cFile").onchange = () => {
@@ -265,15 +308,72 @@ $("cFile").onchange = () => {
     if (f.size > 25 * 1024 * 1024) { $("cErr").textContent = `„${f.name}“ ist größer als 25 MB`; continue; }
     const rd = new FileReader();
     rd.onload = () => { mail.compose.files.push({ name: f.name, mime: f.type || "application/octet-stream", size: f.size,
-                                                  data_b64: String(rd.result).split(",", 2)[1] || "" }); renderCAtts(); };
+                                                  data_b64: String(rd.result).split(",", 2)[1] || "" }); markDirty(); renderCAtts(); };
     rd.readAsDataURL(f);
   }
 };
-$("cFrom").onchange = () => { if (!mail.compose.reply_to_id && !mail.compose.forward_of) applySignature(); };
-$("cClose").onclick = () => {
-  const dirty = $("cBody").value.replace(/\n*-- \n[\s\S]*$/, "").trim() && !mail.compose.reply_to_id && !mail.compose.forward_of;
-  if (dirty && !confirm("Mail verwerfen?")) return;
+$("cFrom").onchange = () => { if (!mail.compose.reply_to_id && !mail.compose.forward_of && !mail.compose.draftId) applySignature(); markDirty(); };
+
+// --- Entwürfe: alle 30 Sekunden (wenn sich etwas geändert hat) im Entwürfe-Ordner des Kontos speichern ---
+function markDirty() { if (mail.compose) mail.compose.dirty = true; }
+["cTo", "cCc", "cBcc", "cSubject", "cBody"].forEach(id => $(id).addEventListener("input", markDirty));
+
+function composeBody() {
+  const c = mail.compose;
+  return { account_id: Number($("cFrom").value), to: $("cTo").value, cc: $("cCc").value, bcc: $("cBcc").value,
+           subject: $("cSubject").value, body: $("cBody").value,
+           attachments: c.files.map(f => ({ name: f.name, mime: f.mime, data_b64: f.data_b64 })),
+           reply_to_id: c.reply_to_id, forward_of: c.forward_of, forward_attachment_ids: c.fwd.filter(a => a.on).map(a => a.id),
+           in_reply_to: c.in_reply_to, references: c.references, draft_message_id: c.draftId };
+}
+
+async function saveDraft() {
+  const c = mail.compose;
+  if (!c || c.noDrafts) return;
+  if (c.saving) return c.saving;           // nicht doppelt speichern
+  c.dirty = false;
+  $("cDraftInfo").textContent = "Entwurf wird gespeichert …";
+  c.saving = api("drafts", { method: "POST", body: composeBody() }).then(r => {
+    c.draftId = r.draft_message_id;
+    $("cDraftInfo").textContent = "Entwurf gespeichert " + new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    $("cDiscard").classList.remove("hidden");
+  }).catch(e => {
+    c.dirty = true;
+    if (/Entwürfe-Ordner/.test(e.message)) { c.noDrafts = true; $("cDraftInfo").textContent = "kein Entwürfe-Ordner – wird nicht zwischengespeichert"; }
+    else $("cDraftInfo").textContent = "Entwurf nicht gespeichert: " + e.message;
+    throw e;
+  }).finally(() => { c.saving = null; });
+  return c.saving;
+}
+
+function closeCompose() {
+  clearInterval(mail.draftTimer);
   $("composeModal").classList.add("hidden");
+  mail.compose = null;
+}
+
+$("cClose").onclick = async () => {
+  const c = mail.compose;
+  const typed = $("cBody").value.replace(/\n*-- \n[\s\S]*$/, "").trim() || $("cSubject").value.trim() || $("cTo").value.trim();
+  if (c && c.dirty && typed && !c.noDrafts) {
+    // Ungespeicherte Änderungen: schnell als Entwurf sichern, dann schließen
+    try { await saveDraft(); } catch (e) { if (!confirm("Der Entwurf konnte nicht gespeichert werden. Trotzdem schließen?")) return; }
+  } else if (c && c.dirty && typed && !confirm("Mail verwerfen?")) return;
+  const saved = c && c.draftId;
+  closeCompose();
+  if (saved) refreshFolders().catch(() => {});
+};
+$("cDiscard").onclick = async () => {
+  const c = mail.compose;
+  if (!confirm("Entwurf verwerfen? Er wird auch im Entwürfe-Ordner gelöscht.")) return;
+  if (c && c.saving) { try { await c.saving; } catch (e) { /* egal */ } }
+  if (c && c.draftId) {
+    try { await api("drafts/delete", { method: "POST", body: { account_id: Number($("cFrom").value), draft_message_id: c.draftId } }); }
+    catch (e) { alert(e.message); return; }
+  }
+  closeCompose();
+  refreshFolders().catch(() => {});
+  if (mail.msg && mail.msg.is_draft) { mail.current = null; readerEmpty(); loadList(false).catch(() => {}); }
 };
 $("cSend").onclick = async () => {
   const c = mail.compose;
@@ -281,18 +381,18 @@ $("cSend").onclick = async () => {
   if (!$("cSubject").value.trim() && !confirm("Ohne Betreff senden?")) return;
   $("cSend").disabled = true; $("cSend").textContent = "Wird gesendet …";
   try {
-    const r = await api("send", { method: "POST", body: {
-      account_id: Number($("cFrom").value), to: $("cTo").value, cc: $("cCc").value, bcc: $("cBcc").value,
-      subject: $("cSubject").value, body: $("cBody").value,
-      attachments: c.files.map(f => ({ name: f.name, mime: f.mime, data_b64: f.data_b64 })),
-      reply_to_id: c.reply_to_id, forward_of: c.forward_of, forward_attachment_ids: c.fwd.filter(a => a.on).map(a => a.id),
-      in_reply_to: c.in_reply_to, references: c.references } });
-    $("composeModal").classList.add("hidden");
+    if (c.saving) { try { await c.saving; } catch (e) { /* egal */ } }   // laufendes Speichern abwarten (Entwurf wird danach gelöscht)
+    const r = await api("send", { method: "POST", body: composeBody() });
+    const wasDraft = mail.msg && mail.msg.is_draft;
+    closeCompose();
+    if (wasDraft) { mail.current = null; readerEmpty(); loadList(false).catch(() => {}); }
     if (r.warning) alert(r.warning);
     if (c.reply_to_id) { const it = mail.items.find(i => i.id === c.reply_to_id); if (it) { it.answered = true; renderList(); } }
   } catch (e) { $("cErr").textContent = e.message; }
   finally { $("cSend").disabled = false; $("cSend").textContent = "Senden"; }
 };
+// beim Verlassen der Seite: offenen Entwurf noch sichern (best effort)
+window.addEventListener("beforeunload", () => { if (mail.compose && mail.compose.dirty && !mail.compose.noDrafts) saveDraft().catch(() => {}); });
 
 async function openDraft(id, mode) {
   try { openCompose(await api(`messages/${id}/draft?mode=${mode}`)); }
@@ -305,8 +405,67 @@ async function loadMail() {
   await loadList(false).catch(showListErr);
 }
 
+// ---------- Neue Mails: alle 20 Sekunden nachsehen, bei Bedarf Browser-Hinweis ----------
+const notify = {
+  supported: () => "Notification" in window,
+  on: () => store.get("pf_notify") === "1" && "Notification" in window && Notification.permission === "granted",
+};
+mail.lastId = null;
+
+function updateNotifyBtn() {
+  const b = $("notifyBtn");
+  b.textContent = notify.on() ? "🔔" : "🔕";
+  b.title = notify.on() ? "Benachrichtigung ist an (klicken zum Ausschalten)" : "Benachrichtigung bei neuer Mail einschalten";
+  if ($("meNotify")) $("meNotify").checked = notify.on();
+}
+
+async function setNotify(on) {
+  if (!on) { store.set("pf_notify", "0"); updateNotifyBtn(); return true; }
+  if (!notify.supported()) throw new Error("Dieser Browser kann keine Benachrichtigungen anzeigen.");
+  if (!window.isSecureContext) throw new Error("Benachrichtigungen gehen nur über https:// (z. B. im DSM-Fenster oder über den Reverse Proxy).");
+  const perm = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  if (perm !== "granted") throw new Error("Der Browser hat Benachrichtigungen blockiert – in den Website-Einstellungen erlauben.");
+  store.set("pf_notify", "1"); updateNotifyBtn();
+  return true;
+}
+
+function showNotification(items) {
+  if (!notify.on() || (!document.hidden && state.tab === "mail" && document.hasFocus())) return;
+  const list = items.slice(0, 3);
+  for (const i of list) {
+    try {
+      const n = new Notification(i.from_name || i.from_addr || "Neue Mail", {
+        body: (i.subject || "(kein Betreff)") + (mail.accounts.length > 1 ? "\n" + i.account_name : ""),
+        tag: "postfach-" + i.id, icon: url("static/icon.png") });
+      n.onclick = () => { window.focus(); n.close(); showTab("mail").then(() => openMessage(i.id)); };
+    } catch (e) { /* manche Browser erlauben das nur im Service Worker – dann eben nur der Zähler */ }
+  }
+  if (items.length > list.length) {
+    try { new Notification(`${items.length} neue Mails`, { tag: "postfach-sammel", icon: url("static/icon.png") }); } catch (e) { /* egal */ }
+  }
+}
+
+async function checkNew() {
+  const r = await api("new" + (mail.lastId !== null ? "?after_id=" + mail.lastId : ""));
+  const first = mail.lastId === null;
+  mail.lastId = r.last_id;
+  if (first || !r.items.length) return false;
+  showNotification(r.items);
+  return true;
+}
+
 function startMailPolling() {
   if (mail.timer) return;
+  updateNotifyBtn();
+  checkNew().catch(() => {});
+  setInterval(async () => {
+    try {
+      if (await checkNew()) {
+        await refreshFolders();
+        if (state.tab === "mail" && !mail.offset && !mail.q) await loadList(false, true);
+      }
+    } catch (e) { /* offline – nächstes Mal */ }
+  }, 20000);
   refreshFolders().catch(() => {});
   mail.timer = setInterval(async () => {
     if (document.hidden) return;
@@ -333,7 +492,25 @@ $("syncBtn").onclick = async () => {
   try { await api("sync", { method: "POST" }); await refreshFolders(); } catch (e) { alert(e.message); }
 };
 $("treeToggle").onclick = () => $("mailPage").classList.toggle("collapsed");
+$("notifyBtn").onclick = async () => {
+  try { await setNotify(!notify.on()); } catch (e) { alert(e.message); }
+};
+$("meNotify").onchange = async () => {
+  $("meNotifyErr").textContent = "";
+  try { await setNotify($("meNotify").checked); } catch (e) { $("meNotifyErr").textContent = e.message; $("meNotify").checked = false; }
+};
+$("meNotifyTest").onclick = async () => {
+  $("meNotifyErr").textContent = "";
+  try {
+    await setNotify(true);
+    new Notification("Postfach", { body: "So sieht ein Hinweis auf neue Mail aus.", icon: url("static/icon.png") });
+  } catch (e) { $("meNotifyErr").textContent = e.message; }
+};
 $("mailPage").classList.add("collapsed");
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("composeModal").classList.contains("hidden")) $("cClose").click();
+  if (e.key === "Escape" && !$("composeModal").classList.contains("hidden")) { $("cClose").click(); return; }
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
+  if (e.key === "Delete" && !typing && state.tab === "mail" && mail.current && $("composeModal").classList.contains("hidden")) {
+    deleteMessage(mail.current);
+  }
 });

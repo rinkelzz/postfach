@@ -51,7 +51,8 @@ class FakeSMTP:
 def env(tmp_path, monkeypatch):
     server = FakeServer()
     monkeypatch.setattr(sync, "open_client", lambda account, password=None: FakeClient(server, account["imap_user"]))
-    monkeypatch.setattr(sync, "start_sync", lambda account_id: bool(sync.sync_account(account_id)) or True)
+    monkeypatch.setattr(sync, "start_sync",
+                        lambda account_id, roles=None: bool(sync.sync_account(account_id, roles=roles)) or True)
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
     monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP)
     FakeSMTP.sent = []
@@ -280,3 +281,109 @@ def test_account_test_endpoint(env, monkeypatch):
     FakeSMTP.fail_auth = True
     r = env["anna"].post("/api/v1/accounts/test", json=ACC).json()
     assert not r["imap_ok"] and "Anmeldung" in r["imap_error"] and r["smtp_ok"] is False
+
+
+def _ids(anna, folder_id=None):
+    q = f"?folder_id={folder_id}" if folder_id else ""
+    return {i["subject"]: i["id"] for i in anna.get("/api/v1/messages" + q).json()["items"]}
+
+
+def _folders(anna):
+    return {f["role"] or f["name"]: f for f in anna.get("/api/v1/folders").json()["accounts"][0]["folders"]}
+
+
+def test_delete_goes_to_trash_then_permanent(env):
+    anna, server = env["anna"], env["server"]
+    server.add("INBOX", mail(subject="Weg damit"))
+    server.add("INBOX", mail(subject="Bleibt"))
+    anna.post("/api/v1/accounts", json=ACC)
+    mid = _ids(anna)["Weg damit"]
+    m = anna.get(f"/api/v1/messages/{mid}").json()
+    assert m["delete_permanent"] is False and m["is_draft"] is False
+    assert anna.post(f"/api/v1/messages/{mid}/delete").json()["result"] == "trash"
+    assert list(_ids(anna)) == ["Bleibt"]
+    assert [b"Weg damit" in x["raw"] for x in server.folders["Trash"]["msgs"].values()] == [True]
+    trash = _folders(anna)["trash"]
+    tid = _ids(anna, trash["id"])["Weg damit"]
+    assert anna.get(f"/api/v1/messages/{tid}").json()["delete_permanent"] is True
+    assert anna.post(f"/api/v1/messages/{tid}/delete").json()["result"] == "deleted"
+    assert server.folders["Trash"]["msgs"] == {} and _ids(anna, trash["id"]) == {}
+    # Ben darf Annas Mail weder löschen noch verschieben
+    bid = _ids(anna)["Bleibt"]
+    assert env["ben"].post(f"/api/v1/messages/{bid}/delete").status_code == 404
+    assert env["ben"].post(f"/api/v1/messages/{bid}/move", json={"folder_id": trash["id"]}).status_code == 404
+
+
+def test_move_between_folders(env):
+    anna, server = env["anna"], env["server"]
+    server.add("INBOX", mail(subject="Angebot Drucker"))
+    anna.post("/api/v1/accounts", json=ACC)
+    target = _folders(anna)["Geschäftlich"]
+    mid = _ids(anna)["Angebot Drucker"]
+    assert anna.post(f"/api/v1/messages/{mid}/move", json={"folder_id": target["id"]}).status_code == 200
+    assert _ids(anna) == {} and list(_ids(anna, target["id"])) == ["Angebot Drucker"]
+    assert server.folders["INBOX"]["msgs"] == {} and len(server.folders["Gesch&AOQ-ftlich"]["msgs"]) == 1
+    # Ordner eines fremden Kontos ist kein gültiges Ziel
+    other = anna.post("/api/v1/accounts", json={**ACC, "email": "zwei@praxis.de"}).json()
+    other_folder = next(a for a in anna.get("/api/v1/folders").json()["accounts"] if a["id"] == other["id"])["folders"][0]
+    mid = _ids(anna, target["id"])["Angebot Drucker"]
+    assert anna.post(f"/api/v1/messages/{mid}/move", json={"folder_id": other_folder["id"]}).status_code == 400
+
+
+def test_drafts_folder_roundtrip(env):
+    anna, server = env["anna"], env["server"]
+    server.folders["Entw&APw-rfe"] = {"flags": {"\\drafts"}, "uidvalidity": 1, "next": 1, "msgs": {}}
+    acc = anna.post("/api/v1/accounts", json=ACC).json()
+    body = {"account_id": acc["id"], "to": "kunde@example.de", "bcc": "chef@praxis.de", "subject": "Angebot",
+            "body": "Erste Fassung", "attachments": [{"name": "a.txt", "mime": "text/plain",
+                                                      "data_b64": base64.b64encode(b"Anhang!").decode()}]}
+    did = anna.post("/api/v1/drafts", json=body).json()["draft_message_id"]
+    anna.post("/api/v1/drafts", json={**body, "body": "Zweite Fassung", "draft_message_id": did})
+    msgs = list(server.folders["Entw&APw-rfe"]["msgs"].values())
+    assert len(msgs) == 1 and b"Zweite Fassung" in msgs[0]["raw"] and {"\\seen", "\\draft"} <= msgs[0]["flags"]
+    assert b"Bcc: chef@praxis.de" in msgs[0]["raw"]
+    # im Entwürfe-Ordner sichtbar, weiter bearbeiten liefert alles zurück (auch Bcc und Anhang)
+    drafts = _folders(anna)["drafts"]
+    mid = _ids(anna, drafts["id"])["Angebot"]
+    assert anna.get(f"/api/v1/messages/{mid}").json()["is_draft"] is True
+    d = anna.get(f"/api/v1/messages/{mid}/draft?mode=edit").json()
+    assert d["bcc"] == "chef@praxis.de" and d["to"] == "kunde@example.de" and d["draft_message_id"] == did
+    assert "Zweite Fassung" in d["body"] and d["files"][0]["name"] == "a.txt"
+    assert base64.b64decode(d["files"][0]["data_b64"]) == b"Anhang!"
+    # Senden löscht den Entwurf; Bcc steht nicht in der verschickten Mail
+    r = anna.post("/api/v1/send", json={"account_id": acc["id"], "to": d["to"], "bcc": d["bcc"], "subject": d["subject"],
+                                        "body": d["body"], "attachments": d["files"], "draft_message_id": did})
+    assert r.status_code == 200, r.text
+    assert server.folders["Entw&APw-rfe"]["msgs"] == {}
+    sent = FakeSMTP.sent[-1]
+    assert "Bcc" not in sent["msg"] and "chef@praxis.de" in sent["to"]
+    assert [p.get_filename() for p in sent["msg"].iter_attachments()] == ["a.txt"]
+    # Verwerfen
+    did = anna.post("/api/v1/drafts", json=body).json()["draft_message_id"]
+    assert len(server.folders["Entw&APw-rfe"]["msgs"]) == 1
+    anna.post("/api/v1/drafts/delete", json={"account_id": acc["id"], "draft_message_id": did})
+    assert server.folders["Entw&APw-rfe"]["msgs"] == {}
+    # fremdes Konto
+    assert env["ben"].post("/api/v1/drafts", json=body).status_code == 404
+
+
+def test_drafts_without_folder_is_clear_error(env):
+    anna = env["anna"]
+    acc = anna.post("/api/v1/accounts", json=ACC).json()
+    r = anna.post("/api/v1/drafts", json={"account_id": acc["id"], "subject": "x"})
+    assert r.status_code == 409 and "Entwürfe-Ordner" in r.json()["detail"]
+
+
+def test_new_mail_for_notifications(env):
+    anna, server = env["anna"], env["server"]
+    acc = anna.post("/api/v1/accounts", json=ACC).json()
+    start = anna.get("/api/v1/new").json()
+    assert start["items"] == []
+    server.add("INBOX", mail(subject="Neu!", frm=("Kunde", "k@example.de")))
+    server.add("INBOX", mail(subject="Schon gelesen"), flags=["\\Seen"])
+    server.add("Gesch&AOQ-ftlich", mail(subject="Anderer Ordner"))
+    sync.sync_account(acc["id"])
+    r = anna.get(f"/api/v1/new?after_id={start['last_id']}").json()
+    assert [(i["subject"], i["from_name"], i["account_name"]) for i in r["items"]] == [("Neu!", "Kunde", "Praxis")]
+    assert anna.get(f"/api/v1/new?after_id={r['last_id']}").json()["items"] == []
+    assert env["ben"].get(f"/api/v1/new?after_id={start['last_id']}").json()["items"] == []

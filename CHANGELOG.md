@@ -2,6 +2,24 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.2.0] – 2026-11-23
+
+### Neu
+- **Neue Mails kommen sofort:** Pro Konto beobachtet ein Wächter den Posteingang per IMAP IDLE. Meldet der Server
+  eine neue Mail, wird nur der Posteingang abgeglichen – meist in Sekunden statt erst beim nächsten Abruf. Kann ein
+  Server kein IDLE, bleibt es beim regelmäßigen Abruf; unter **Konten** steht, welches Konto sofort benachrichtigt.
+- **Browser-Benachrichtigung** bei neuer Mail im Posteingang (🔔 über der Liste oder unter **Mein Zugang**), solange
+  Postfach in einem Tab oder im DSM-Fenster offen ist. Ein Klick öffnet die Mail. Braucht https (DSM-Fenster oder Reverse Proxy).
+- **Löschen:** 🗑 bzw. Taste Entf legt die Mail in den Papierkorb, im Papierkorb wird endgültig gelöscht (mit Rückfrage).
+  Danach öffnet sich die nächste Mail.
+- **Verschieben** in einen anderen Ordner desselben Kontos. Funktioniert auch bei Servern ohne IMAP-MOVE.
+- **Entwürfe:** Beim Schreiben wird alle 30 Sekunden (und beim Schließen) automatisch im Entwürfe-Ordner des Kontos
+  gespeichert – auch in Outlook oder am Handy sichtbar. Entwürfe lassen sich mit „Weiter bearbeiten“ fortsetzen
+  (mit Bcc und Anhängen), „Verwerfen“ löscht sie, nach dem Senden verschwindet der Entwurf von selbst.
+
+### Verbessert
+- Kommt eine neue Mail, während gerade abgerufen wird, wird direkt danach noch einmal abgeglichen – nichts geht verloren.
+
 ## [0.1.1] – 2026-11-23
 
 ### Behoben
@@ -42,5 +60,6 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.2.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.2.0
 [0.1.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.1.0

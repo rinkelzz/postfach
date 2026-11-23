@@ -151,7 +151,10 @@ def read_message(message_id: int, images: bool = Query(False, description="exter
     atts = [dict(r) for r in conn.execute(
         "SELECT id, filename, mime, size, inline, content_id FROM attachments WHERE message_id = ? ORDER BY idx", (message_id,))]
     folder = conn.execute("SELECT id, name, role FROM folders WHERE id = ?", (m["folder_id"],)).fetchone()
+    trash = sync.folder_by_role(conn, account["id"], "trash")
     return {
+        "delete_permanent": not trash or (folder is not None and folder["role"] == "trash"),
+        "is_draft": bool(folder and folder["role"] == "drafts"),
         "id": m["id"], "account_id": m["account_id"], "account_email": account["email"], "account_name": account["name"],
         "folder": dict(folder) if folder else None,
         "subject": m["subject"], "from_name": m["from_name"], "from_addr": m["from_addr"], "to_addrs": m["to_addrs"],
@@ -201,10 +204,20 @@ def attachment(message_id: int, attachment_id: int, user=Depends(current_user), 
 
 
 @router.get("/messages/{message_id}/draft")
-def reply_draft(message_id: int, mode: str = Query(..., pattern="^(reply|replyall|forward)$"),
+def reply_draft(message_id: int, mode: str = Query(..., pattern="^(reply|replyall|forward|edit)$"),
                 user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
-    """Vorbefülltes Formular zum Antworten, Allen antworten oder Weiterleiten."""
+    """Vorbefülltes Formular zum Antworten, Allen antworten, Weiterleiten – oder (edit) einen Entwurf weiter bearbeiten."""
     m, account = _own_message(conn, user, message_id)
+    if mode == "edit":
+        try:
+            raw = sync.fetch_raw(conn, account, m)
+        except Exception as e:  # noqa: BLE001
+            _imap_fail(e)
+        if raw is None:
+            raise HTTPException(404, "Den Entwurf gibt es am Server nicht mehr")
+        d = compose.edit_draft(m, raw)
+        d.update({"reply_to_id": None, "forward_of": None})
+        return d
     if m["body_text"] is None:
         try:
             sync.load_body(conn, account, m)
@@ -240,13 +253,10 @@ class SendIn(BaseModel):
                                               description="Anhänge der weitergeleiteten Nachricht, die mitgehen")
     in_reply_to: str = Field("", max_length=1000)
     references: str = Field("", max_length=8000)
+    draft_message_id: str = Field("", max_length=300, description="zugehöriger Entwurf – wird nach dem Senden gelöscht")
 
 
-@router.post("/send")
-def send(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
-    account = get_account(conn, user, data.account_id)  # nur eigene Konten
-    if not account["active"]:
-        raise HTTPException(400, "Das Konto ist ausgeschaltet")
+def _attachments_for(conn, user, data) -> list:
     try:
         files = compose.decode_upload(data.attachments)
     except compose.SendError as e:
@@ -265,6 +275,15 @@ def send(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = De
                 got = mailparse.attachment_data(raw, idx) if raw else None
                 if got:
                     files.append(got)
+    return files
+
+
+@router.post("/send")
+def send(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    account = get_account(conn, user, data.account_id)  # nur eigene Konten
+    if not account["active"]:
+        raise HTTPException(400, "Das Konto ist ausgeschaltet")
+    files = _attachments_for(conn, user, data)
     try:
         msg, rcpts = compose.build(account, data.to, data.cc, data.bcc, data.subject, data.body, files,
                                    data.in_reply_to, data.references)
@@ -282,5 +301,98 @@ def send(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = De
             sync.set_flags(conn, raccount, rm, {"answered": True})
         except Exception:  # noqa: BLE001 – Markierung ist nicht wichtig genug für eine Fehlermeldung
             pass
-    sync.start_sync(account["id"])
+    if data.draft_message_id:
+        try:
+            sync.delete_draft(conn, account, data.draft_message_id)
+        except Exception:  # noqa: BLE001 – die Mail ist raus; ein übrig gebliebener Entwurf ist kein Fehler
+            pass
+    sync.start_sync(account["id"], roles=("sent", "drafts", "inbox"))
     return {"ok": True, "warning": warning, "message_id": msg["Message-ID"]}
+
+
+# --- Entwürfe -----------------------------------------------------------------
+
+@router.post("/drafts")
+def save_draft(data: SendIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Entwurf im Entwürfe-Ordner des Kontos speichern (ersetzt die vorige Fassung). Liefert die Message-ID des Entwurfs."""
+    account = get_account(conn, user, data.account_id)
+    files = _attachments_for(conn, user, data)
+    old = data.draft_message_id
+    # Konto gewechselt? Der Entwurf bekommt eine neue Kennung, der alte im anderen Konto bleibt unberührt
+    draft_id = old if old and old.endswith("@" + account["email"].split("@")[-1] + ">") else compose.new_draft_id(account)
+    try:
+        msg, _ = compose.build(account, data.to, data.cc, data.bcc, data.subject, data.body, files,
+                               data.in_reply_to, data.references, draft_id=draft_id)
+        sync.save_draft(conn, account, bytes(msg), draft_id, old if old != draft_id else "")
+    except compose.SendError as e:
+        raise HTTPException(400, str(e))
+    except sync.SyncError as e:
+        raise HTTPException(409, str(e))
+    except Exception as e:  # noqa: BLE001
+        _imap_fail(e)
+    return {"ok": True, "draft_message_id": draft_id}
+
+
+class DraftDeleteIn(BaseModel):
+    account_id: int
+    draft_message_id: str = Field(..., max_length=300)
+
+
+@router.post("/drafts/delete")
+def discard_draft(data: DraftDeleteIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    account = get_account(conn, user, data.account_id)
+    try:
+        sync.delete_draft(conn, account, data.draft_message_id)
+    except Exception as e:  # noqa: BLE001
+        _imap_fail(e)
+    return {"ok": True}
+
+
+# --- Verschieben, Löschen -----------------------------------------------------
+
+class MoveIn(BaseModel):
+    folder_id: int
+
+
+@router.post("/messages/{message_id}/move")
+def move(message_id: int, data: MoveIn, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    m, account = _own_message(conn, user, message_id)
+    dest = conn.execute("SELECT * FROM folders WHERE id = ? AND account_id = ?", (data.folder_id, account["id"])).fetchone()
+    if not dest:
+        raise HTTPException(400, "Zielordner nicht gefunden (nur Ordner desselben Kontos)")
+    if dest["id"] == m["folder_id"]:
+        return {"ok": True}
+    try:
+        sync.move_message(conn, account, m, dest)
+    except Exception as e:  # noqa: BLE001
+        _imap_fail(e)
+    return {"ok": True}
+
+
+@router.post("/messages/{message_id}/delete")
+def delete(message_id: int, user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """In den Papierkorb – liegt die Mail schon dort (oder gibt es keinen), endgültig."""
+    m, account = _own_message(conn, user, message_id)
+    try:
+        result = sync.delete_message(conn, account, m)
+    except Exception as e:  # noqa: BLE001
+        _imap_fail(e)
+    return {"ok": True, "result": result}
+
+
+# --- Neue Mails (für die Benachrichtigung im Browser) -------------------------
+
+@router.get("/new")
+def new_mail(after_id: Optional[int] = Query(None, ge=0), user=Depends(current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Ungelesene Mails in den Posteingängen mit einer Nummer größer als after_id. Ohne after_id nur die höchste Nummer."""
+    top = conn.execute("SELECT COALESCE(MAX(m.id), 0) FROM messages m JOIN accounts a ON a.id = m.account_id "
+                       "WHERE a.owner_id = ?", (user["id"],)).fetchone()[0]
+    items = []
+    if after_id is not None:
+        rows = conn.execute(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, a.name AS account_name FROM messages m "
+            "JOIN accounts a ON a.id = m.account_id JOIN folders f ON f.id = m.folder_id "
+            "WHERE a.owner_id = ? AND a.active = 1 AND f.role = 'inbox' AND m.seen = 0 AND m.id > ? "
+            "ORDER BY m.id DESC LIMIT 20", (user["id"], after_id)).fetchall()
+        items = [dict(r) for r in rows]
+    return {"last_id": top, "items": items}

@@ -27,6 +27,8 @@ MAX_PARALLEL = 3
 _locks: Dict[int, threading.Lock] = {}
 _locks_guard = threading.Lock()
 _running: Dict[int, float] = {}
+_again: Dict[int, Optional[tuple]] = {}   # Abgleich angefragt, während einer lief → danach noch einmal
+_again_guard = threading.Lock()
 _slots = threading.BoundedSemaphore(MAX_PARALLEL)
 
 
@@ -194,12 +196,15 @@ def _load_bodies(conn: sqlite3.Connection, account: sqlite3.Row, client, deadlin
 
 # --- Ganzes Konto ------------------------------------------------------------
 
-def sync_account(account_id: int, bodies: bool = True, budget: float = BODY_TIME_BUDGET) -> Dict:
-    """Ein Konto abgleichen. Läuft schon ein Abgleich für das Konto, passiert nichts."""
+def sync_account(account_id: int, bodies: bool = True, budget: float = BODY_TIME_BUDGET,
+                 roles: Optional[tuple] = None, _managed: bool = False) -> Dict:
+    """Ein Konto abgleichen. Läuft schon ein Abgleich für das Konto, passiert nichts.
+    roles: nur Ordner mit diesen Rollen (z. B. ("inbox",) nach einer IDLE-Meldung) – schneller als alles."""
     lock = _lock_for(account_id)
     if not lock.acquire(blocking=False):
         return {"skipped": True}
-    _running[account_id] = time.time()
+    if not _managed:
+        _running[account_id] = time.time()
     conn = connect()
     result = {"new": 0, "gone": 0, "bodies": 0, "error": None}
     try:
@@ -209,6 +214,8 @@ def sync_account(account_id: int, bodies: bool = True, budget: float = BODY_TIME
         try:
             with open_client(account) as client:
                 for folder in _sync_folders(conn, account_id, client):
+                    if roles is not None and folder["role"] not in roles:
+                        continue
                     try:
                         r = sync_folder(conn, account, folder, client)
                     except imapclient.ImapError as e:  # einzelner kaputter Ordner stoppt nicht das ganze Konto
@@ -227,18 +234,41 @@ def sync_account(account_id: int, bodies: bool = True, budget: float = BODY_TIME
         return result
     finally:
         conn.close()
-        _running.pop(account_id, None)
+        if not _managed:
+            _running.pop(account_id, None)
         lock.release()
 
 
-def start_sync(account_id: int) -> bool:
-    """Abgleich im Hintergrund starten. False, wenn er schon läuft."""
-    if is_running(account_id):
-        return False
+def _merge(a: Optional[tuple], b: Optional[tuple]) -> Optional[tuple]:
+    """None = alle Ordner; sonst die Vereinigung der Rollen."""
+    if a is None or b is None:
+        return None
+    return tuple(sorted(set(a) | set(b)))
+
+
+def start_sync(account_id: int, roles: Optional[tuple] = None) -> bool:
+    """Abgleich im Hintergrund starten. Läuft schon einer, wird danach noch einmal abgeglichen
+    (sonst ginge z. B. eine neue Mail verloren, deren Ordner der laufende Abgleich schon hinter sich hat)."""
+    with _again_guard:
+        if is_running(account_id):
+            _again[account_id] = _merge(_again[account_id], roles) if account_id in _again else roles
+            return False
+        _running[account_id] = time.time()  # gleich reservieren, damit kein zweiter Thread startet
 
     def run():
-        with _slots:
-            sync_account(account_id)
+        current = roles
+        while True:
+            try:
+                with _slots:
+                    sync_account(account_id, roles=current, budget=BODY_TIME_BUDGET if current is None else 20,
+                                 _managed=True)
+            except Exception as e:  # noqa: BLE001 – darf den Merker unten nie hängen lassen
+                print(f"[postfach] Abgleich Konto {account_id}: {e}", flush=True)
+            with _again_guard:
+                if account_id not in _again:
+                    _running.pop(account_id, None)
+                    return
+                current = _again.pop(account_id)
     threading.Thread(target=run, name=f"postfach-sync-{account_id}", daemon=True).start()
     return True
 
@@ -305,3 +335,65 @@ def set_flags(conn: sqlite3.Connection, account: sqlite3.Row, message: sqlite3.R
     for k, v in todo.items():
         conn.execute(f"UPDATE messages SET {k} = ? WHERE id = ?", (int(v), message["id"]))
     _update_counts(conn, folder["id"])
+
+
+# --- Verschieben, Löschen ----------------------------------------------------
+
+def folder_by_role(conn: sqlite3.Connection, account_id: int, role: str) -> Optional[sqlite3.Row]:
+    return conn.execute("SELECT * FROM folders WHERE account_id = ? AND role = ?", (account_id, role)).fetchone()
+
+
+def move_message(conn: sqlite3.Connection, account: sqlite3.Row, message: sqlite3.Row, dest: sqlite3.Row) -> None:
+    src = conn.execute("SELECT * FROM folders WHERE id = ?", (message["folder_id"],)).fetchone()
+    with open_client(account) as client:
+        client.select(src["path"], readonly=False)
+        client.move([message["uid"]], dest["path"])
+    conn.execute("DELETE FROM messages WHERE id = ?", (message["id"],))
+    _update_counts(conn, src["id"])
+    start_sync(account["id"], roles=(dest["role"],) if dest["role"] else None)
+
+
+def delete_message(conn: sqlite3.Connection, account: sqlite3.Row, message: sqlite3.Row) -> str:
+    """In den Papierkorb – oder, wenn sie schon dort liegt (bzw. es keinen gibt), endgültig. Liefert trash|deleted."""
+    src = conn.execute("SELECT * FROM folders WHERE id = ?", (message["folder_id"],)).fetchone()
+    trash = folder_by_role(conn, account["id"], "trash")
+    if trash and trash["id"] != src["id"]:
+        move_message(conn, account, message, trash)
+        return "trash"
+    with open_client(account) as client:
+        client.select(src["path"], readonly=False)
+        client.delete([message["uid"]])
+    conn.execute("DELETE FROM messages WHERE id = ?", (message["id"],))
+    _update_counts(conn, src["id"])
+    return "deleted"
+
+
+# --- Entwürfe -----------------------------------------------------------------
+
+def save_draft(conn: sqlite3.Connection, account: sqlite3.Row, raw: bytes, message_id: str,
+               old_message_id: str = "") -> None:
+    """Entwurf im Entwürfe-Ordner ablegen und frühere Fassungen (gleiche Message-ID) entfernen.
+    Erst ablegen, dann löschen – so geht nie etwas verloren."""
+    drafts = folder_by_role(conn, account["id"], "drafts")
+    if not drafts:
+        raise SyncError("Dieses Konto hat keinen Entwürfe-Ordner")
+    with open_client(account) as client:
+        client.select(drafts["path"], readonly=False)
+        old = set(client.uids_by_message_id(message_id))
+        if old_message_id and old_message_id != message_id:
+            old |= set(client.uids_by_message_id(old_message_id))
+        client.append(drafts["path"], raw, "(\\Seen \\Draft)")
+        if old:
+            client.delete(sorted(old))
+    start_sync(account["id"], roles=("drafts",))
+
+
+def delete_draft(conn: sqlite3.Connection, account: sqlite3.Row, message_id: str) -> None:
+    drafts = folder_by_role(conn, account["id"], "drafts")
+    if not drafts or not message_id:
+        return
+    with open_client(account) as client:
+        client.select(drafts["path"], readonly=False)
+        client.delete(client.uids_by_message_id(message_id))
+    conn.execute("DELETE FROM messages WHERE folder_id = ? AND message_id = ?", (drafts["id"], message_id))
+    _update_counts(conn, drafts["id"])

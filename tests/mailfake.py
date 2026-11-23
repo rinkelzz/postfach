@@ -17,6 +17,7 @@ class FakeServer:
         }
         self.logins = []
         self.fail_login = False
+        self.capabilities = {"IDLE", "MOVE", "UIDPLUS"}
 
     def add(self, path, raw, flags=(), when=None):
         f = self.folders[path]
@@ -38,6 +39,7 @@ class FakeClient:
         self.server = server
         server.logins.append(user)
         self.selected = None
+        self.capabilities = set(server.capabilities)
 
     def __enter__(self):
         return self
@@ -89,7 +91,21 @@ class FakeClient:
             (s.add if add else s.discard)(flags.lower())
 
     def append(self, path, message, flags="(\\Seen)"):
-        self.server.add(path, message, ["\\seen"])
+        self.server.add(path, message, [f for f in flags.strip("()").split() if f])
+
+    def move(self, uids, dest):
+        for u in list(uids):
+            m = self._f()["msgs"].pop(u)
+            self.server.add(dest, m["raw"], m["flags"], m["when"])
+
+    def delete(self, uids):
+        for u in list(uids):
+            self._f()["msgs"].pop(u, None)
+
+    def uids_by_message_id(self, message_id):
+        import email
+        return sorted(u for u, m in self._f()["msgs"].items()
+                      if email.message_from_bytes(m["raw"]).get("Message-ID", "").strip() == message_id)
 
 
 def mail(subject="Hallo", frm=("Anna Absender", "anna@example.de"), to="tim@test.de", text="Hallo Tim,\nwie geht's?",

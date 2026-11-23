@@ -34,15 +34,29 @@ def split_addresses(value: str) -> List[Tuple[str, str]]:
     return pairs
 
 
+def _lenient(value: str) -> List[Tuple[str, str]]:
+    value = (value or "").replace(";", ",").replace("\n", ",")
+    return [(n.strip(), a.strip()) for n, a in getaddresses([value]) if a.strip()]
+
+
+def new_draft_id(account: sqlite3.Row) -> str:
+    return make_msgid(idstring="entwurf", domain=account["email"].split("@")[-1])
+
+
 def _clean(s: str) -> str:
     return re.sub(r"[\r\n]+", " ", s or "").strip()
 
 
 def build(account: sqlite3.Row, to: str, cc: str, bcc: str, subject: str, body: str,
-          attachments: List[Tuple[str, str, bytes]], in_reply_to: str = "", references: str = "") -> Tuple[EmailMessage, List[str]]:
-    to_p, cc_p, bcc_p = split_addresses(to), split_addresses(cc), split_addresses(bcc)
+          attachments: List[Tuple[str, str, bytes]], in_reply_to: str = "", references: str = "",
+          draft_id: str = "") -> Tuple[EmailMessage, List[str]]:
+    """Mail bauen. Mit draft_id als Entwurf: Empfänger dürfen fehlen, Bcc bleibt (nur im eigenen Entwürfe-Ordner) stehen."""
+    if draft_id:  # im Entwurf darf eine Adresse noch halb getippt sein
+        to_p, cc_p, bcc_p = (_lenient(v) for v in (to, cc, bcc))
+    else:
+        to_p, cc_p, bcc_p = split_addresses(to), split_addresses(cc), split_addresses(bcc)
     rcpts = [a for _, a in to_p + cc_p + bcc_p]
-    if not rcpts:
+    if not rcpts and not draft_id:
         raise SendError("Bitte mindestens einen Empfänger angeben")
     if len(rcpts) > MAX_RECIPIENTS:
         raise SendError(f"Höchstens {MAX_RECIPIENTS} Empfänger pro Mail")
@@ -57,7 +71,9 @@ def build(account: sqlite3.Row, to: str, cc: str, bcc: str, subject: str, body: 
         msg["Cc"] = ", ".join(formataddr(p) for p in cc_p)
     msg["Subject"] = _clean(subject)
     msg["Date"] = formatdate(localtime=True)
-    msg["Message-ID"] = make_msgid(domain=account["email"].split("@")[-1])
+    msg["Message-ID"] = draft_id or make_msgid(domain=account["email"].split("@")[-1])
+    if draft_id and bcc_p:
+        msg["Bcc"] = ", ".join(formataddr(p) for p in bcc_p)
     if in_reply_to:
         msg["In-Reply-To"] = _clean(in_reply_to)
     if references:
@@ -195,3 +211,22 @@ def draft(conn: sqlite3.Connection, account: sqlite3.Row, m: sqlite3.Row, mode: 
     return {"account_id": account["id"], "to": mailparse.format_addresses(to_pairs),
             "cc": mailparse.format_addresses(cc_pairs), "subject": _prefix(m["subject"], "AW"), "body": body,
             "in_reply_to": m["message_id"], "references": refs, "forward_attachments": []}
+
+
+def edit_draft(m: sqlite3.Row, raw: bytes) -> Dict:
+    """Gespeicherten Entwurf wieder ins Formular laden – Anhänge kommen als Dateien mit (sie werden beim nächsten
+    Speichern wieder in den Entwurf geschrieben, der alte wird dabei ersetzt)."""
+    import email as _email
+    msg = _email.message_from_bytes(raw, policy=_email.policy.compat32)
+    body = mailparse.parse_body(raw)
+    files = []
+    for a in body["attachments"]:
+        got = mailparse.attachment_data(raw, a["idx"])
+        if got:
+            files.append({"name": got[0], "mime": got[1], "size": len(got[2]),
+                          "data_b64": base64.b64encode(got[2]).decode("ascii")})
+    text = body["text"] if body["text"].strip() else mailparse.html_to_text(body["html"])
+    return {"account_id": m["account_id"], "to": m["to_addrs"], "cc": m["cc_addrs"],
+            "bcc": mailparse.format_addresses(mailparse.addresses(msg, "Bcc")), "subject": m["subject"], "body": text,
+            "in_reply_to": m["in_reply_to"], "references": m["refs"], "files": files, "forward_attachments": [],
+            "draft_message_id": m["message_id"]}

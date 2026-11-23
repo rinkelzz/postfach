@@ -50,6 +50,7 @@
         <div class="row"><h2 id="listTitle">Posteingang</h2>
           <div class="row" style="gap:6px;flex-wrap:nowrap">
             <button class="mini" id="treeToggle" title="Ordner zeigen">📁</button>
+            <button class="mini" id="notifyBtn" title="Benachrichtigung bei neuer Mail">🔕</button>
             <button class="mini" id="syncBtn" title="Alle Konten jetzt abrufen">↻ Abrufen</button></div></div>
         <input type="search" id="q" maxlength="200" placeholder="Suchen in allen Konten …" autocomplete="off">
         <div class="filters"><button data-filter="all" class="on">Alle</button><button data-filter="unread">Ungelesen</button>
@@ -75,7 +76,9 @@
         <div class="chips" id="cAtts"></div>
       </div>
       <div class="cbar">
-        <label class="btn" style="display:inline-block">📎 Anhang <input type="file" id="cFile" multiple hidden></label>
+        <div class="row"><label class="btn" style="display:inline-block">📎 Anhang <input type="file" id="cFile" multiple hidden></label>
+          <button class="danger" id="cDiscard" title="Entwurf löschen und schließen">Verwerfen</button>
+          <span class="muted small" id="cDraftInfo"></span></div>
         <div class="row"><span class="err" id="cErr"></span><button class="primary" id="cSend">Senden</button></div>
       </div>
     </div>
@@ -259,6 +262,14 @@
       </div>
       <p class="muted small" id="meInfo"></p>
       <div class="err" id="meErr"></div>
+    </section>
+    <section class="card">
+      <h2>Benachrichtigungen</h2>
+      <p class="muted small" style="margin-top:0">Bei neuer Mail im Posteingang zeigt der Browser einen Hinweis – solange Postfach in einem Tab
+        (oder im DSM-Fenster) geöffnet ist. Gilt für dieses Gerät und diesen Browser.</p>
+      <div class="row"><label class="inline"><input type="checkbox" id="meNotify"> Benachrichtigung bei neuer Mail</label>
+        <button class="mini" id="meNotifyTest">Testen</button></div>
+      <div class="err" id="meNotifyErr"></div>
     </section>
     <section class="card">
       <h2>Design</h2>

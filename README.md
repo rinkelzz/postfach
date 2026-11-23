@@ -10,9 +10,9 @@ Ein E-Mail-Programm für IMAP-Konten – als Paket auf der eigenen Synology NAS,
 Mehrere Benutzer, jeder mit seinen eigenen Mailkonten, alle Posteingänge in einer Liste. Wer in DSM angemeldet ist,
 ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen Zwischenspeicher für schnelles Suchen.
 
-> **Stand:** Version 0.1 – Lesen und Senden. Abrufen, Ordner, gemeinsamer Posteingang, Suche, Anhänge,
-> Antworten/Allen antworten/Weiterleiten, sichere Anzeige von HTML-Mails. Als Nächstes: Benachrichtigungen,
-> Verschieben/Löschen, Regeln, Gmail/Microsoft 365 – siehe [Fahrplan](#fahrplan).
+> **Stand:** Version 0.2 – Lesen und Senden, neue Mails sofort (IMAP IDLE) mit Browser-Benachrichtigung,
+> Löschen/Papierkorb, Verschieben und automatisch gespeicherte Entwürfe. Als Nächstes: Regeln, dann
+> Gmail/Microsoft 365 – siehe [Fahrplan](#fahrplan).
 
 ![Posteingang](docs/screenshots/posteingang.png)
 
@@ -33,12 +33,16 @@ ist es auch hier. Die Mails bleiben auf dem Mailserver, die NAS hält nur einen 
 
 ## Funktionen
 
-- **IMAP-Konten abrufen** – beliebig viele pro Benutzer, mit SSL/TLS oder STARTTLS. Die App ruft alle Konten
-  regelmäßig ab (Standard alle 5 Minuten, einstellbar) oder sofort per „Abrufen“.
+- **IMAP-Konten abrufen** – beliebig viele pro Benutzer, mit SSL/TLS oder STARTTLS. Neue Mails im Posteingang kommen
+  **sofort** (IMAP IDLE), alle Ordner werden zusätzlich regelmäßig abgeglichen (Standard alle 5 Minuten, einstellbar).
+- **Browser-Benachrichtigung** bei neuer Mail (🔔 über der Liste), solange Postfach in einem Tab oder im DSM-Fenster offen ist.
 - **Gemeinsamer Posteingang**: alle Posteingänge in einer Liste, jedes Konto mit eigener Farbe. Daneben alle Ordner
   der Konten (Gesendet, Entwürfe, Papierkorb, eigene Ordner – auch mit Umlauten).
 - **Lesen**: Text- und HTML-Mails, Anhänge herunterladen, eingebettete Bilder, als gelesen/ungelesen und mit Stern
   markieren – die Markierungen landen auch am Mailserver, sind also in Outlook oder am Handy genauso zu sehen.
+- **Aufräumen**: Löschen in den Papierkorb (Taste Entf), dort endgültig; Verschieben in andere Ordner.
+- **Entwürfe** werden beim Schreiben alle 30 Sekunden im Entwürfe-Ordner gespeichert – auch in Outlook oder am Handy
+  sichtbar – und lassen sich später weiter bearbeiten.
 - **Schreiben**: neue Mail, Antworten, Allen antworten, Weiterleiten (mit den Original-Anhängen, einzeln abwählbar),
   eigene Anhänge bis 25 MB, Kopie und Blindkopie, Signatur pro Konto. Gesendete Mails werden im „Gesendet“-Ordner
   am Server abgelegt (bei Gmail und Microsoft 365 macht das der Server selbst).
@@ -104,8 +108,8 @@ Mehr in [SECURITY.md](SECURITY.md).
 
 | Version | Inhalt |
 |---|---|
-| **0.1** | **Lesen + Senden:** Konten, Abruf, Ordner, gemeinsamer Posteingang, Suche, Anhänge, Antworten/Weiterleiten, Rechte für Admins |
-| 0.2 | Neue Mails sofort erkennen (IMAP IDLE), Hinweis im Browser und Push über ntfy; Verschieben, Löschen/Papierkorb, Entwürfe |
+| 0.1 | Lesen + Senden: Konten, Abruf, Ordner, gemeinsamer Posteingang, Suche, Anhänge, Antworten/Weiterleiten, Rechte für Admins |
+| **0.2** | **Neue Mails sofort (IMAP IDLE), Browser-Benachrichtigung, Löschen/Papierkorb, Verschieben, Entwürfe** |
 | 0.3 | Regeln/Filter (Absender, Betreff, Konto → verschieben, markieren, weiterleiten) |
 | 0.4 | Gmail und Microsoft 365 per OAuth2 |
 
@@ -217,4 +221,5 @@ its own DSM window with single sign-on for DSM users. The user interface is Germ
   HTML mail is sanitized, shown in a sandboxed iframe with its own CSP, and remote images are blocked until you allow them.
 - One noarch package for Intel/AMD and ARM, no native libraries; uses the NAS's Python 3.8–3.13. Nightly backups,
   updates through Package Center, four themes, audit log, configurable port.
-- Roadmap: IMAP IDLE and push notifications, move/delete, rules, Gmail/Microsoft 365 via OAuth2.
+- New mail arrives instantly via IMAP IDLE with browser notifications; delete to trash, move, auto-saved drafts.
+- Roadmap: rules/filters, Gmail/Microsoft 365 via OAuth2.

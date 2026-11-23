@@ -136,7 +136,13 @@ class Client:
             if "LOGINDISABLED" in str(e) or "not supported" in str(e).lower():
                 raise ImapError("Der Server erlaubt keine Anmeldung ohne Verschlüsselung – STARTTLS oder SSL wählen")
             raise
-        self.capabilities = {c.decode() if isinstance(c, bytes) else str(c) for c in (self.conn.capabilities or ())}
+        self.capabilities = {str(c).upper() for c in (self.conn.capabilities or ())}
+        try:  # nach der Anmeldung nennen viele Server mehr Fähigkeiten (MOVE, UIDPLUS, IDLE …)
+            typ, data = self.conn.capability()
+            if typ == "OK" and data and data[0]:
+                self.capabilities |= {c.decode("ascii", "replace").upper() for c in data[0].split()}
+        except (imaplib.IMAP4.error, OSError):
+            pass
         self.selected: Optional[str] = None
 
     def __enter__(self):
@@ -248,6 +254,97 @@ class Client:
     def append(self, path: str, message: bytes, flags: str = "(\\Seen)") -> None:
         typ, data = self.conn.append(quote(path), flags, imaplib.Time2Internaldate(_now_ts()), message)
         self._ok(typ, data, f"Ablegen in „{utf7_decode(path)}“")
+
+
+    # --- Verschieben und Löschen ---------------------------------------------
+
+    def expunge_uids(self, uids: List[int]) -> None:
+        """Als gelöscht markierte Nachrichten entfernen – mit UIDPLUS nur genau diese."""
+        if "UIDPLUS" in self.capabilities:
+            self._ok(*self.conn.uid("EXPUNGE", _uidset(uids)), "Endgültig löschen")
+        else:
+            self._ok(*self.conn.expunge(), "Endgültig löschen")
+
+    def move(self, uids: Iterable[int], dest: str) -> None:
+        """Nachrichten aus dem geöffneten Ordner in einen anderen verschieben."""
+        uids = list(uids)
+        if not uids:
+            return
+        if "MOVE" in self.capabilities:
+            self._ok(*self.conn.uid("MOVE", _uidset(uids), quote(dest)), f"Verschieben nach „{utf7_decode(dest)}“")
+            return
+        self._ok(*self.conn.uid("COPY", _uidset(uids), quote(dest)), f"Kopieren nach „{utf7_decode(dest)}“")
+        self.store_flags(uids, "\\Deleted", True)
+        self.expunge_uids(uids)
+
+    def delete(self, uids: Iterable[int]) -> None:
+        """Endgültig löschen (im geöffneten Ordner)."""
+        uids = list(uids)
+        if not uids:
+            return
+        self.store_flags(uids, "\\Deleted", True)
+        self.expunge_uids(uids)
+
+    def uids_by_message_id(self, message_id: str) -> List[int]:
+        if not message_id or any(c in message_id for c in '"\\\r\n'):
+            return []
+        data = self._ok(*self.conn.uid("SEARCH", None, "HEADER", "Message-ID", f'"{message_id}"'), "Suche")
+        return sorted({int(x) for x in b" ".join(d for d in data if d).split() if x.isdigit()})
+
+    # --- IDLE: auf neue Nachrichten warten ------------------------------------
+
+    def idle_wait(self, timeout: float) -> str:
+        """Wartet im geöffneten Ordner, bis der Server etwas meldet (RFC 2177).
+
+        Ergebnis: "changed" (neue/gelöschte/geänderte Nachricht – Verbindung bleibt nutzbar) oder
+        "timeout" (nichts passiert – die Verbindung ist danach NICHT mehr nutzbar, bitte neu verbinden;
+        imaplib kann nach einer Zeitüberschreitung nicht weiterlesen). Bei Verbindungsende: ImapError."""
+        if "IDLE" not in self.capabilities:
+            raise ImapError("Der Server unterstützt IDLE nicht")
+        tag = self.conn._new_tag()
+        self.conn.send(tag + b" IDLE\r\n")
+        line = self.conn.readline()
+        early = False
+        while line.startswith(b"* "):  # untagged Antworten vor der Bestätigung
+            early = early or bool(_CHANGE.match(line))
+            line = self.conn.readline()
+        if not line.startswith(b"+"):
+            raise ImapError("IDLE abgelehnt: " + line.decode("utf-8", "replace").strip()[:200])
+        self.conn.sock.settimeout(timeout)
+        try:
+            while not early:
+                line = self.conn.readline()
+                if not line:
+                    raise ImapError("Verbindung vom Server beendet")
+                if line.startswith(b"* BYE"):
+                    raise ImapError("Server hat die Verbindung beendet")
+                if _CHANGE.match(line):
+                    break
+        except (socket.timeout, TimeoutError):
+            return "timeout"
+        finally:
+            try:
+                self.conn.sock.settimeout(TIMEOUT)
+            except OSError:
+                pass
+        self.conn.send(b"DONE\r\n")
+        while True:
+            line = self.conn.readline()
+            if not line:
+                raise ImapError("Verbindung vom Server beendet")
+            if line.startswith(tag):
+                break
+        return "changed"
+
+    def interrupt(self) -> None:
+        """Aus einem anderen Thread: wartendes IDLE sofort beenden (Verbindung ist danach zu)."""
+        try:
+            self.conn.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+
+_CHANGE = re.compile(rb"^\* \d+ (EXISTS|EXPUNGE|FETCH|RECENT)\b", re.I)
 
 
 def _now_ts() -> float:

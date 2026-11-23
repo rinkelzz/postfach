@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from .. import compose, crypto, imapclient, providers, sync
+from .. import compose, crypto, idle, imapclient, providers, sync
 from ..db import audit, get_db, get_setting
 from ..mailer import valid_email
 from ..security import current_user
@@ -91,6 +91,7 @@ def account_out(row: sqlite3.Row, conn: sqlite3.Connection) -> dict:
         "color": row["color"], "active": bool(row["active"]), "sort": row["sort"],
         "last_sync": local_iso(row["last_sync"]), "last_error": row["last_error"],
         "syncing": sync.is_running(row["id"]),
+        "push": idle.state(row["id"]),   # Zustand des IDLE-Wächters (None = läuft nicht)
     }
 
 
@@ -161,6 +162,7 @@ def create_account(data: AccountBase, user=Depends(current_user), conn: sqlite3.
          data.color or "#0f766e", int(data.active if data.active is not None else True), sort, user["id"], now_utc_str()))
     audit(conn, user["id"], "account_created", f"user:{owner}", f"{data.email} ({data.imap_host})")
     sync.start_sync(cur.lastrowid)
+    idle.kick()
     return account_out(conn.execute("SELECT * FROM accounts WHERE id = ?", (cur.lastrowid,)).fetchone(), conn)
 
 
@@ -198,6 +200,7 @@ def update_account(account_id: int, data: AccountBase, user=Depends(current_user
             conn.execute("DELETE FROM folders WHERE account_id = ?", (account_id,))  # anderer Server → neu aufbauen
         logged = {k: v for k, v in changes.items() if "password" not in k and k != "signature"}
         audit(conn, user["id"], "account_updated", f"user:{row['owner_id']}", f"{row['email']}: {logged}"[:500])
+        idle.kick(account_id)
         if server_changed or fields.get("active") == 1:
             conn.execute("UPDATE accounts SET last_error = NULL WHERE id = ?", (account_id,))
             sync.start_sync(account_id)
@@ -211,6 +214,7 @@ def delete_account(account_id: int, user=Depends(current_user), conn: sqlite3.Co
     if row["owner_id"] == user["id"] and not user["is_admin"]:
         _may_add(conn, user)
     conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+    idle.kick(account_id)
     audit(conn, user["id"], "account_deleted", f"user:{row['owner_id']}", row["email"])
     return {"ok": True}
 

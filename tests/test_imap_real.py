@@ -31,7 +31,7 @@ def _reset_and_fill():
     host, port, sec, user, pw = _cfg()
     c = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context()) if sec == "ssl" else imaplib.IMAP4(host, port)
     c.login(user, pw)
-    for box in ("INBOX", "Sent", "Gesch&AOQ-ftlich"):
+    for box in ("INBOX", "Sent", "Gesch&AOQ-ftlich", "Trash", "Drafts"):
         typ, data = c.select(box)
         if int(data[0]):
             c.store("1:*", "+FLAGS.SILENT", "(\\Deleted)")
@@ -92,4 +92,93 @@ def test_real_server_roundtrip(tmp_path):
         with pytest.raises(Exception) as e:
             imapclient.Client(host, port, sec, user, "falsch")
         assert "Anmeldung" in imapclient.friendly_error(e.value)
+    crypto._cache.clear()
+
+
+def test_real_server_idle_move_delete_drafts(tmp_path):
+    from app import idle
+    host, port, sec, user, pw = _cfg()
+    _reset_and_fill()
+    with fresh_db(tmp_path):
+        crypto._cache.clear()
+        with connect() as conn:
+            acc_id = conn.execute(
+                "INSERT INTO accounts(owner_id, name, email, imap_host, imap_port, imap_security, imap_user, smtp_host, "
+                "secret, created_at) VALUES (1, 'Test', ?, ?, ?, ?, ?, '', ?, ?)",
+                (user, host, port, sec, user, crypto.pack_secrets(pw), now_utc_str())).lastrowid
+        assert sync.sync_account(acc_id)["error"] is None
+        # IDLE-Wächter: neue Mail erscheint ohne Abruf von Hand
+        sig = idle._signature(connect().execute("SELECT * FROM accounts WHERE id = ?", (acc_id,)).fetchone())
+        w = idle.Watcher(acc_id, sig)
+        w.start()
+        try:
+            for _ in range(50):
+                if w.state == "wartet":
+                    break
+                time.sleep(0.1)
+            assert w.state == "wartet"
+            c = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context()) if sec == "ssl" else imaplib.IMAP4(host, port)
+            c.login(user, pw)
+            c.append("INBOX", "()", imaplib.Time2Internaldate(time.time()), mail(subject="Per IDLE", message_id="<idle@x>"))
+            c.logout()
+            found = None
+            for _ in range(100):
+                with connect() as conn:
+                    found = conn.execute("SELECT * FROM messages WHERE subject = 'Per IDLE'").fetchone()
+                if found:
+                    break
+                time.sleep(0.1)
+            assert found, "IDLE hat die neue Mail nicht gemeldet"
+        finally:
+            w.stop()
+            w.join(5)
+        assert not w.is_alive()
+        while sync.is_running(acc_id):
+            time.sleep(0.1)
+        with connect() as conn:
+            account = conn.execute("SELECT * FROM accounts WHERE id = ?", (acc_id,)).fetchone()
+            folders = {f["role"] or f["name"]: f for f in conn.execute("SELECT * FROM folders WHERE account_id = ?", (acc_id,))}
+            m = conn.execute("SELECT * FROM messages WHERE subject = 'Per IDLE'").fetchone()
+            # in den Papierkorb, dann endgültig
+            assert sync.delete_message(conn, account, m) == "trash"
+        while sync.is_running(acc_id):
+            time.sleep(0.1)
+        sync.sync_account(acc_id)
+        with connect() as conn:
+            t = conn.execute("SELECT * FROM messages WHERE subject = 'Per IDLE'").fetchone()
+            assert t and t["folder_id"] == folders["trash"]["id"]
+            assert sync.delete_message(conn, account, t) == "deleted"
+        # Verschieben ohne MOVE (COPY + Löschen) und ohne UIDPLUS
+        real_open = sync.open_client
+
+        def old_server(account, password=None):
+            c = real_open(account, password)
+            c.capabilities -= {"MOVE", "UIDPLUS"}
+            return c
+        sync.open_client = old_server
+        try:
+            with connect() as conn:
+                m = conn.execute("SELECT * FROM messages WHERE subject = 'Rechnung'").fetchone()
+                sync.move_message(conn, account, m, folders["Geschäftlich"])
+        finally:
+            sync.open_client = real_open
+        while sync.is_running(acc_id):
+            time.sleep(0.1)
+        sync.sync_account(acc_id)
+        with connect() as conn:
+            r = conn.execute("SELECT * FROM messages WHERE subject = 'Rechnung'").fetchall()
+            assert [x["folder_id"] for x in r] == [folders["Geschäftlich"]["id"]]
+            # Entwurf speichern, ersetzen, löschen
+            if "drafts" in folders:
+                msg, _ = compose.build(account, "a@b.de", "", "", "Entwurf", "eins", [], draft_id="<d1@test.de>")
+                sync.save_draft(conn, account, bytes(msg), "<d1@test.de>")
+                msg, _ = compose.build(account, "a@b.de", "", "", "Entwurf", "zwei", [], draft_id="<d1@test.de>")
+                sync.save_draft(conn, account, bytes(msg), "<d1@test.de>")
+                with sync.open_client(account) as c:
+                    c.select(folders["drafts"]["path"])
+                    assert len(c.uids_by_message_id("<d1@test.de>")) == 1
+                sync.delete_draft(conn, account, "<d1@test.de>")
+                with sync.open_client(account) as c:
+                    c.select(folders["drafts"]["path"])
+                    assert c.uids_by_message_id("<d1@test.de>") == []
     crypto._cache.clear()
