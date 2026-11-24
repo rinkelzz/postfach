@@ -348,3 +348,8 @@ input[type=color] { padding: 2px; width: 46px; height: 36px; cursor: pointer; }
 .suggest div small { color: var(--muted); margin-left: 6px; }
 .suggest div.on, .suggest div:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .cform .crow { position: relative; }
+/* Listenkopf: langer Titel (z. B. Suche) wird gekürzt, die Knöpfe bleiben immer sichtbar */
+.mlist .lhead .row > h2 { flex: 1 1 auto; min-width: 0; }
+.mlist .lhead .row > .row { flex: 0 0 auto; }
+@media (max-width: 1250px) { #syncBtn .lbl { display: none; } }
+.mlist .lhead { grid-template-columns: minmax(0, 1fr); }

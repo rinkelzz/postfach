@@ -29,7 +29,7 @@ async function refreshFolders() {
   document.title = (mail.unread ? `(${mail.unread}) ` : "") + (state.title || "Postfach");
   renderTree();
   const syncing = mail.accounts.some(a => a.syncing);
-  $("syncBtn").innerHTML = syncing ? '<span class="spin">↻</span> Abruf …' : "↻ Abrufen";
+  $("syncBtn").innerHTML = syncing ? '<span class="spin">↻</span><span class="lbl"> Abruf …</span>' : '↻<span class="lbl"> Abrufen</span>';
   if (syncing && !mail.syncPoll) {
     mail.syncPoll = setTimeout(async () => {
       mail.syncPoll = null;

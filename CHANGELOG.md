@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.2] – 2026-11-24
+
+### Behoben
+- Bei langer Suche (oder langem Ordnernamen) wurde oben in der Liste der Knopf „Abrufen“ abgeschnitten. Der Titel wird
+  jetzt gekürzt, die Knöpfe bleiben immer sichtbar; bei schmalem Fenster zeigt „Abrufen“ nur noch das Symbol ↻.
+
 ## [0.5.1] – 2026-11-23
 
 ### Verbessert
@@ -124,6 +130,7 @@ Erste Version: **Lesen und Senden**.
 - Nächtliche Datensicherung in einen freigegebenen Ordner, Wiederherstellen per Klick, alte Sicherungen löschbar.
 - Updates übers Paket-Zentrum (die App ist ihre eigene Paketquelle), Änderungsprotokoll mit CSV-Export, Port änderbar.
 
+[0.5.2]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.2
 [0.5.1]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.1
 [0.5.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.5.0
 [0.4.0]: https://github.com/rinkelzz/postfach/releases/tag/v0.4.0
